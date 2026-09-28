@@ -1,0 +1,45 @@
+# Jaeger v2.21.0: https://github.com/jaegertracing/jaeger/blob/v2.21.0/cmd/jaeger/config-badger.yaml
+extensions:
+  jaeger_storage:
+    backends:
+      primary:
+        badger:
+          directories:
+            keys: /badger/keys
+            values: /badger/values
+          ephemeral: false
+          ttl:
+            spans: 72h
+  jaeger_query:
+    enable_tracing: false
+    storage:
+      traces: primary
+    http:
+      endpoint: 0.0.0.0:16686
+    grpc:
+      endpoint: 127.0.0.1:16685
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: primary
+
+service:
+  telemetry:
+    traces:
+      level: none
+      processors: []
+  extensions: [jaeger_storage, jaeger_query]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]

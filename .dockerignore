@@ -9,6 +9,9 @@ models/
 services/*/.venv/
 services/*/.pytest_cache/
 services/*/__pycache__/
+**/.venv/
+**/.pytest_cache/
+**/__pycache__/
 webui/node_modules/
 webui/.node_modules-docker/
 webui/dist/

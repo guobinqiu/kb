@@ -1,0 +1,53 @@
+MinerU VLM Server + API Server 部署命令
+
+以下命令在目标机器本地执行，不包含固定机器 IP、SSH 用户或密码。
+
+1. 准备目录和源码
+
+mkdir -p ~/workspace/mineru-deploy
+cd ~/workspace/mineru-deploy
+
+git clone https://github.com/opendatalab/MinerU.git
+
+cd ~/workspace/mineru-deploy/MinerU
+
+2. 构建镜像
+
+默认 Dockerfile 里有一条模型下载命令：
+
+mineru-kit models download --tier standard --small-backend torch --vlm-engine vllm -s huggingface
+
+如果目标机器访问 HuggingFace 不稳定，可以在构建镜像前把下载源改成 ModelScope：
+
+mineru-kit models download --tier standard --small-backend torch --vlm-engine vllm -s modelscope
+
+cp docker/global/Dockerfile docker/global/Dockerfile.bak
+sed -i 's/-s huggingface/-s modelscope/' docker/global/Dockerfile
+
+docker build -t mineru:4 -f docker/global/Dockerfile .
+
+3. 返回 KB 项目，启动 VLM Server 和 API Server
+
+cd ~/workspace/kb
+just mineru up
+
+deploy/mineru.yaml 使用上面构建的 mineru:4，API 暴露到 18002，
+VLM 仅使用容器内的 30000 端口，显存比例为 0.45。两个容器均需要 NVIDIA GPU。
+API 容器名为 mineru-api-server，VLM 容器名为 mineru-vlm-server。
+API 通过 --vlm-server-url http://mineru-vlm-server:30000 复用已有 VLM Server，不另起 VLM 引擎。
+API 使用 --disable-image-analysis 关闭图片内容分析；表格识别不受影响。
+
+4. 查看状态和日志
+
+docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml ps
+docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml logs --tail 100
+
+5. 健康检查
+
+docker exec mineru-vlm-server curl -f http://127.0.0.1:30000/health
+
+curl -f http://127.0.0.1:18002/v1/health
+
+6. 删除服务容器
+
+just mineru down

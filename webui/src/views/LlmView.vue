@@ -1,19 +1,13 @@
 <template>
-  <main class="llm-view">
-    <div class="page-head">
-      <div>
-        <h2>{{ t('llm.title') }}</h2>
-        <p>{{ t('llm.desc') }}</p>
-      </div>
-    </div>
-
+  <section class="workspace-panel llm-view">
     <div v-if="!currentApp" class="trace-empty">{{ t('upload.selectApp') }}</div>
     <template v-else>
+      <p>{{ t('llm.desc') }}</p>
       <div class="llm-toolbar">
         <div>
           <p>{{ t('llm.thread') }}: <span class="thread-id">{{ threadId }}</span></p>
         </div>
-        <el-button @click="newConversation">{{ t('llm.newConversation') }}</el-button>
+        <el-button :disabled="streaming" @click="newConversation">{{ t('llm.newConversation') }}</el-button>
       </div>
 
       <div class="llm-chat">
@@ -34,20 +28,21 @@
           :placeholder="t('llm.placeholder')"
           @keydown.enter.exact.prevent="sendMessage"
         />
-        <el-button type="primary" native-type="submit" :loading="streaming" :disabled="!input.trim() || streaming">
+        <el-button type="primary" native-type="submit" :loading="streaming" :disabled="!currentApp || !input.trim() || streaming">
           {{ streaming ? t('llm.responding') : t('llm.send') }}
         </el-button>
       </form>
     </template>
-  </main>
+  </section>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useAppsStore } from '../stores/apps'
+import { useAuthStore } from '../stores/auth'
 import { useLlmChatStore } from '../stores/llmChat'
 import { errorMessage, indexErrorMessage, showToast } from '../utils/toast'
 
@@ -55,57 +50,85 @@ const API_PATH = '/api/v1/llm/chat/stream'
 const { t } = useI18n()
 const route = useRoute()
 const appsStore = useAppsStore()
+const authStore = useAuthStore()
 const llmChatStore = useLlmChatStore()
 const { apps } = storeToRefs(appsStore)
+const { currentUser } = storeToRefs(authStore)
 
 const currentAppId = computed(() => route.params.app_id)
-const currentApp = computed(() => apps.value.find(app => app.app_id === currentAppId.value))
-const session = computed(() => llmChatStore.sessionFor(currentAppId.value))
+const currentApp = computed(() => apps.value.find(app => (app.id ?? app.app_id) === currentAppId.value))
+const scopeKey = computed(() => currentAppId.value)
+const session = computed(() => llmChatStore.sessionFor(scopeKey.value))
 const threadId = computed(() => session.value.threadId)
 const messages = computed(() => session.value.messages)
 const input = ref('')
 const streaming = ref(false)
+let activeController = null
 
 function newConversation() {
-  llmChatStore.newConversation(currentAppId.value)
+  llmChatStore.newConversation(scopeKey.value)
 }
 
 async function requestHeaders() {
-  const app = currentApp.value
-  return {
+  const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${app.api_key}`,
+    'Authorization': `Bearer ${localStorage.getItem('rag_token') || ''}`,
+    'X-App-Id': currentApp.value?.app_id,
   }
+  if (currentUser.value?.org_id) headers['X-Org-Id'] = currentUser.value.org_id
+  return headers
 }
 
 async function sendMessage() {
   const content = input.value.trim()
   if (!content || streaming.value || !currentApp.value) return
 
+  let workspaceIds
+  try {
+    const workspaces = await appsStore.fetchWorkspaces(currentAppId.value)
+    workspaceIds = workspaces.map(workspace => workspace.id)
+    if (!workspaceIds.length) {
+      showToast('error', t('llm.noWorkspaces'))
+      return
+    }
+  } catch (err) {
+    showToast('error', errorMessage(err, t('llm.requestFailed')))
+    return
+  }
+
+  const messageList = session.value.messages
+  const controller = new AbortController()
+  activeController = controller
   input.value = ''
-  messages.value.push({ role: 'user', content })
-  messages.value.push({ role: 'assistant', content: '' })
-  const assistantIndex = messages.value.length - 1
+  messageList.push({ role: 'user', content })
+  messageList.push({ role: 'assistant', content: '' })
+  const assistantIndex = messageList.length - 1
   streaming.value = true
 
-  const body = JSON.stringify({ thread_id: threadId.value, message: content })
+  const body = JSON.stringify({ thread_id: threadId.value, message: content, workspace_ids: workspaceIds })
   try {
     const res = await fetch(API_PATH, {
       method: 'POST',
       headers: await requestHeaders(),
       body,
+      signal: controller.signal,
     })
     if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status} ${res.statusText}`)
-    await readStream(res, assistantIndex)
+    await readStream(res, messageList, assistantIndex)
   } catch (err) {
-    messages.value[assistantIndex].content = errorMessage(err, t('llm.requestFailed'))
-    showToast('error', messages.value[assistantIndex].content)
+    if (err.name !== 'AbortError') {
+      messageList[assistantIndex].content = errorMessage(err, t('llm.requestFailed'))
+      showToast('error', messageList[assistantIndex].content)
+    }
   } finally {
-    streaming.value = false
+    if (activeController === controller) {
+      activeController = null
+      streaming.value = false
+    }
   }
 }
 
-async function readStream(res, assistantIndex) {
+async function readStream(res, messageList, assistantIndex) {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -116,9 +139,9 @@ async function readStream(res, assistantIndex) {
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split('\n\n')
       buffer = events.pop() || ''
-      for (const eventText of events) handleEvent(eventText, assistantIndex)
+      for (const eventText of events) handleEvent(eventText, messageList, assistantIndex)
     }
-    if (buffer) handleEvent(buffer, assistantIndex)
+    if (buffer) handleEvent(buffer, messageList, assistantIndex)
   } finally {
     try {
       await reader.cancel()
@@ -128,17 +151,25 @@ async function readStream(res, assistantIndex) {
   }
 }
 
-function handleEvent(eventText, assistantIndex) {
+function handleEvent(eventText, messageList, assistantIndex) {
   const line = eventText.split('\n').find(item => item.startsWith('data:'))
   if (!line) return
   const event = JSON.parse(line.slice(5).trim())
-  if (event.type === 'token') messages.value[assistantIndex].content += event.content || ''
+  if (event.type === 'token') messageList[assistantIndex].content += event.content || ''
   if (event.type === 'error') throw new Error(indexErrorMessage(event))
 }
+
+watch(scopeKey, () => {
+  activeController?.abort()
+  activeController = null
+  streaming.value = false
+  input.value = ''
+})
+onBeforeUnmount(() => activeController?.abort())
 </script>
 
 <style scoped>
-.llm-view { display: grid; grid-template-rows: auto auto minmax(360px, 1fr) auto; gap: 16px; min-height: calc(100vh - 142px); }
+.llm-view { display: grid; grid-template-rows: auto auto minmax(360px, 1fr) auto; gap: 16px; min-height: calc(100vh - 250px); }
 .llm-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .llm-toolbar p { font-size: 12px; color: var(--el-text-color-secondary); }
 .thread-id { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: var(--el-text-color-primary); }

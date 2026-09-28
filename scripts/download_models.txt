@@ -10,18 +10,5 @@ modelscope download BAAI/bge-reranker-base --local-dir models/BAAI/bge-reranker-
 modelscope download BAAI/bge-reranker-v2-m3 --local-dir models/BAAI/bge-reranker-v2-m3
 modelscope download BAAI/bge-reranker-large --local-dir models/BAAI/bge-reranker-large
 
-# MinerU 4.0 模型；使用 Parser 环境中的 mineru-kit，与运行时共用模型根目录
-export MINERU_MODEL_BASE_DIR="$PWD/models/mineru"
-
-# basic：仅小模型；后端自动按当前机器选择
-uv run --project services/parser --python 3.11 mineru-kit models download --tier basic --source modelscope
-uv run --project services/parser --python 3.11 mineru-kit models verify --tier basic
-
-# standard/advanced：小模型 + VLM；以下按部署目标二选一
-# CPU：运行时同样设置 MINERU_MODEL_SMALL_BACKEND=onnx、MINERU_MODEL_VLM_ENGINE=llama-cpp
-uv run --project services/parser --python 3.11 mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp --source modelscope
-uv run --project services/parser --python 3.11 mineru-kit models verify --tier standard --small-backend onnx --vlm-engine llama-cpp
-
-# NVIDIA GPU：运行时同样设置 MINERU_MODEL_SMALL_BACKEND=torch、MINERU_MODEL_VLM_ENGINE=vllm
-uv run --project services/parser --python 3.11 --extra gpu mineru-kit models download --tier standard --small-backend torch --vlm-engine vllm --source modelscope
-uv run --project services/parser --python 3.11 --extra gpu mineru-kit models verify --tier standard --small-backend torch --vlm-engine vllm
+# MinerU 官方独立服务的模型下载和部署见 scripts/deploy_mineru_services.txt。
+# Indexer 通过 HTTP 调用该服务，不下载或加载本地 MinerU 模型。

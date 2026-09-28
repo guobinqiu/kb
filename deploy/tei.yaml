@@ -1,0 +1,44 @@
+x-infra-service: &infra-service
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "5"
+  networks:
+    - kb-net
+
+services:
+  tei_dense:
+    container_name: tei_dense
+    <<: *infra-service
+    image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
+    command: ["--model-id", "/model"]
+    gpus: all
+    ports:
+      - "8081:80"
+    volumes:
+      - ../models/BAAI/bge-m3:/model:ro
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+
+  tei_rerank:
+    container_name: tei_rerank
+    <<: *infra-service
+    image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
+    command: ["--model-id", "/model"]
+    gpus: all
+    ports:
+      - "8082:80"
+    volumes:
+      - ../models/BAAI/bge-reranker-v2-m3:/model:ro
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+
+networks:
+  kb-net:
+    external: true

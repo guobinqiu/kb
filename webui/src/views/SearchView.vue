@@ -1,5 +1,6 @@
 <template>
-  <main class="search-view">
+  <section class="workspace-panel search-view">
+    <p class="search-scope">{{ t('search.accessibleWorkspaces') }}</p>
     <!-- Search Section -->
     <div class="search-section">
       <div class="search-row-1">
@@ -42,45 +43,48 @@
     </div>
 
     <!-- Results -->
-    <div v-if="searchResults.length > 0" class="results-section">
+    <div v-if="resultCount > 0" class="results-section">
       <div class="results-bar">
-        <span class="results-count">{{ t('search.resultCount', { count: searchResults.length }) }}</span>
+        <span class="results-count">{{ t('search.resultCount', { count: resultCount }) }}</span>
         <span class="results-mode">{{ t('search.mode') }}: {{ t(`search.modeValues.${lastSearch?.mode || 'dense'}`) }}</span>
+        <span class="results-mode">{{ t('search.accessibleWorkspaces') }}</span>
         <span class="results-mode">{{ t('search.files') }}: {{ lastSearch?.fileIds?.length ? lastSearch.fileIds.length : t('common.all') }}</span>
         <span v-if="searchTime !== null" class="results-elapsed">{{ t('search.elapsed') }}: {{ searchTime }}ms</span>
       </div>
-      <div v-for="(r, i) in searchResults" :key="i" class="result-card">
-        <div class="result-head">
-          <div class="result-file">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span>{{ r.metadata?.filename || '未知' }}</span>
+      <div v-for="workspace in workspaceGroups" :key="workspace.id" class="workspace-results">
+        <h4>{{ workspace.name }}</h4>
+        <div v-for="(r, i) in workspace.results" :key="r.id || i" class="result-card">
+          <div class="result-head">
+            <div class="result-file">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>{{ r.metadata?.filename || t('search.unknownFile') }}</span>
+            </div>
+            <span v-if="typeof r.score === 'number'" class="result-score">{{ t('search.score') }}: {{ formatScore(r.score) }}</span>
           </div>
-          <span v-if="typeof r.score === 'number'" class="result-score">{{ t('search.score') }}: {{ formatScore(r.score) }}</span>
+          <p class="result-body" v-html="escapeHtml(r.content)"></p>
         </div>
-        <p class="result-body" v-html="escapeHtml(r.content)"></p>
       </div>
     </div>
     <div v-if="noResults" class="no-results">
       <p>{{ t('search.noResults') }}</p>
       <p class="no-results-hint">{{ t('search.noResultsHint') }}</p>
     </div>
-  </main>
+  </section>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import axios from '../utils/api'
-import { useActiveAppStore } from '../stores/activeApp'
+import { useAppsStore } from '../stores/apps'
 import { parseFileIds, escapeHtml } from '../utils/format'
 import { errorMessage, showToast } from '../utils/toast'
 
-const API = '/api/rag'
+const API = '/api/v1'
 const { t } = useI18n()
-const activeAppStore = useActiveAppStore()
 const route = useRoute()
-const currentAppId = computed(() => route.params.app_id || activeAppStore.appId)
+const appsStore = useAppsStore()
 
 const query = ref('')
 const mode = ref('dense')
@@ -90,11 +94,13 @@ const rerankVisible = ref(false)
 const rerankFetchK = ref(20)
 const sparseAvailable = ref(false)
 const fileIdsText = ref('')
-const searchResults = ref([])
+const workspaceGroups = ref([])
+const resultCount = computed(() => workspaceGroups.value.reduce((count, workspace) => count + workspace.results.length, 0))
 const searchTime = ref(null)
 const lastSearch = ref(null)
 const searching = ref(false)
 const noResults = ref(false)
+let searchRequestId = 0
 
 function searchFileIds() {
   return parseFileIds(fileIdsText.value)
@@ -107,12 +113,16 @@ function formatScore(score) {
 async function doSearch() {
   if (!query.value.trim()) return
   if (searching.value) return
+  const currentRequest = ++searchRequestId
   if (rerankVisible.value && rerank.value && rerankFetchK.value < topK.value) rerankFetchK.value = topK.value
   searching.value = true
   noResults.value = false
-  searchResults.value = []
+  workspaceGroups.value = []
   searchTime.value = null
   try {
+    if (!appsStore.apps.length) await appsStore.fetchApps()
+    const app = appsStore.apps.find(item => item.id === route.params.app_id)
+    if (!app) throw new Error('App not found')
     const fileIds = searchFileIds()
     const body = {
       query: query.value,
@@ -120,11 +130,21 @@ async function doSearch() {
       top_k: topK.value,
       rerank: rerankVisible.value && rerank.value,
     }
-    if (currentAppId.value) body.app_id = currentAppId.value
     if (fileIds.length) body.file_ids = fileIds
     if (rerankVisible.value && rerank.value) body.rerank_fetch_k = rerankFetchK.value
-    const res = await axios.post(`${API}/search`, body)
-    searchResults.value = res.data.results
+    const workspaces = await appsStore.fetchWorkspaces(app.id)
+    const res = workspaces.length
+      ? await axios.post(`${API}/rag/search`, body, { headers: { 'X-App-Id': app.app_id } })
+      : { data: { results: [], elapsed_ms: 0 } }
+    if (currentRequest !== searchRequestId) return
+    const workspaceNames = new Map(workspaces.map(workspace => [workspace.id, workspace.name]))
+    const grouped = new Map()
+    for (const result of res.data.results || []) {
+      const workspaceId = result.metadata?.workspace_id || ''
+      if (!grouped.has(workspaceId)) grouped.set(workspaceId, { id: workspaceId, name: workspaceNames.get(workspaceId) || workspaceId || t('search.unknownWorkspace'), results: [] })
+      grouped.get(workspaceId).results.push(result)
+    }
+    workspaceGroups.value = [...grouped.values()]
     searchTime.value = res.data.elapsed_ms
     lastSearch.value = {
       query: query.value,
@@ -134,16 +154,16 @@ async function doSearch() {
       rerankFetchK: rerankVisible.value && rerank.value ? rerankFetchK.value : null,
       fileIds,
     }
-    noResults.value = searchResults.value.length === 0
+    noResults.value = resultCount.value === 0
   } catch (err) {
-    showToast('error', errorMessage(err, 'Search failed'))
+    if (currentRequest === searchRequestId) showToast('error', errorMessage(err, 'Search failed'))
   }
-  searching.value = false
+  if (currentRequest === searchRequestId) searching.value = false
 }
 
 async function fetchConfig() {
   try {
-    const res = await axios.get(`${API}/config`)
+    const res = await axios.get(`${API}/rag/config`)
     sparseAvailable.value = Boolean(res.data.capabilities?.sparse_vector)
     mode.value = res.data.mode || mode.value
     topK.value = res.data.top_k ?? topK.value
@@ -155,3 +175,9 @@ async function fetchConfig() {
 
 onMounted(fetchConfig)
 </script>
+
+<style scoped>
+.search-scope { margin-bottom: 20px; font-size: 13px; color: var(--el-text-color-secondary); }
+.workspace-results + .workspace-results { border-top: 1px solid var(--el-border-color); }
+.workspace-results h4 { padding: 16px 0 4px; font-size: 14px; font-weight: 650; }
+</style>

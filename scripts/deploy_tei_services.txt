@@ -1,0 +1,77 @@
+TEI Embedding + Rerank 服务部署命令
+
+以下命令在目标机器的 KB 项目根目录执行，需要 NVIDIA GPU 和 Docker GPU 支持。
+
+1. 下载模型
+
+复用 scripts/download_models.txt 中的 ModelScope 下载命令：
+
+modelscope download BAAI/bge-m3 --local-dir models/BAAI/bge-m3
+modelscope download BAAI/bge-reranker-v2-m3 --local-dir models/BAAI/bge-reranker-v2-m3
+
+2. 启动服务
+
+just tei up
+
+该命令使用 deploy/tei.yaml，Compose 项目名为 kb-tei，接入共享网络 kb-net。
+两个服务均使用官方 GPU 镜像：
+
+ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
+
+无需本项目 build 或 push 镜像。
+Embedding 容器 tei_dense 挂载 models/BAAI/bge-m3，宿主端口 8081 映射到容器端口 80。
+Rerank 容器 tei_rerank 挂载 models/BAAI/bge-reranker-v2-m3，宿主端口 8082 映射到容器端口 80。
+
+3. 查看状态和日志
+
+docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml ps
+docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml logs --tail 100
+
+4. 健康检查
+
+等待两个服务完成模型加载后执行：
+
+curl -f http://127.0.0.1:8081/health
+curl -f http://127.0.0.1:8082/health
+
+5. Embedding 和 Rerank 测试
+
+curl -f http://127.0.0.1:8081/embed \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs":"TEI embedding test"}'
+
+curl -f http://127.0.0.1:8082/rerank \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is TEI?","texts":["TEI serves embedding and reranking models.","The weather is sunny."]}'
+
+6. 配置 KB API 和 Indexer
+
+调整两个入口共用的 kb_api/config/rag.yaml：
+
+inference.tei.enable: true
+inference.siliconflow-cn.enable: false
+inference.siliconflow-intl.enable: false
+
+两端 inference.tei.dense.bge_m3 和 inference.tei.rerank.bge_m3 均启用，保持相同模型配置：
+
+dense.bge_m3.model_name: BAAI/bge-m3
+dense.bge_m3.dimensions: 1024
+rerank.bge_m3.model_name: BAAI/bge-reranker-v2-m3
+
+base_url 使用 KB API 和 Indexer 可访问的服务地址，不包含 /embed 或 /rerank 路径。
+同一 Docker 网络内可使用：
+
+dense.bge_m3.base_url: http://tei_dense:80
+rerank.bge_m3.base_url: http://tei_rerank:80
+
+跨机器时改为目标机器地址，Embedding 使用 8081，Rerank 使用 8082。
+更新配置后重新创建应用服务：
+
+just kb up
+just indexer up
+
+7. 删除服务容器
+
+just tei down
+
+该命令使用原生 Compose down，不删除模型目录、镜像或共享网络 kb-net。

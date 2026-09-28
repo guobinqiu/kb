@@ -1,65 +1,80 @@
 set dotenv-load := true
 set dotenv-path := "deploy/.env"
 
-CTRL_STACK := "brain_ctrl"
-DEPLOY_STACK := "brain"
-INFRA_STACK := "brain_infra"
-NETWORK := "brain-net"
-ROOT := justfile_directory()
-
-ctrl action:
-	just _ctrl-{{action}}
-
-deploy action:
-	just _deploy-{{action}}
-
 infra action:
 	just _infra-{{action}}
 
-_ctrl-up: _network-up
-	env PROJECT_ROOT={{quote(ROOT)}} docker stack deploy --with-registry-auth -c deploy/ctrl.yaml {{CTRL_STACK}}
+kb action:
+	just _kb-{{action}}
 
-_ctrl-down:
-	docker stack rm {{CTRL_STACK}}
+indexer action:
+	just _indexer-{{action}}
 
-_deploy-up: _network-up
-	env PROJECT_ROOT={{quote(ROOT)}} docker stack deploy --with-registry-auth -c deploy/deploy.yaml {{DEPLOY_STACK}}
+chat action:
+	just _chat-{{action}}
 
-_deploy-down:
-	docker stack rm {{DEPLOY_STACK}}
+webui action:
+	just _webui-{{action}}
+
+tei action:
+	just _tei-{{action}}
+
+mineru action:
+	just _mineru-{{action}}
 
 _infra-up: _network-up
-	env PROJECT_ROOT={{quote(ROOT)}} docker stack deploy --with-registry-auth -c deploy/infra.yaml {{INFRA_STACK}}
+	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml up -d
 
 _infra-down:
-	docker stack rm {{INFRA_STACK}}
+	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml down
+
+_kb-up: _network-up
+	docker compose --env-file deploy/.env -p kb-api -f deploy/kb.yaml up -d --build --force-recreate
+
+_kb-down:
+	docker compose --env-file deploy/.env -p kb-api -f deploy/kb.yaml down
+
+_kb-build:
+	docker compose --env-file deploy/.env -p kb-api -f deploy/kb.yaml build
+
+_indexer-up: _network-up
+	docker compose --env-file deploy/.env -p kb-indexer -f deploy/indexer.yaml up -d --build --force-recreate
+
+_indexer-down:
+	docker compose --env-file deploy/.env -p kb-indexer -f deploy/indexer.yaml down
+
+_indexer-build:
+	docker compose --env-file deploy/.env -p kb-indexer -f deploy/indexer.yaml build
+
+_chat-up: _network-up
+	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml up -d --build --force-recreate
+
+_chat-down:
+	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml down
+
+_chat-build:
+	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml build
+
+_webui-up: _network-up _webui-build
+	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml up -d --force-recreate
+
+_webui-down:
+	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml down
+
+_webui-build:
+	npm --prefix webui run build
+
+_tei-up: _network-up
+	docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml up -d
+
+_tei-down:
+	docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml down
+
+_mineru-up: _network-up
+	docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml up -d
+
+_mineru-down:
+	docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml down
 
 _network-up:
-	docker network inspect {{NETWORK}} >/dev/null 2>&1 || docker network create --driver overlay --attachable {{NETWORK}}
-
-service action name:
-	just _service-{{action}} {{quote(name)}}
-
-_service-start name:
-	docker service scale {{quote(name)}}=1
-
-_service-stop name:
-	docker service scale {{quote(name)}}=0
-
-_service-remove name:
-	docker service rm {{quote(name)}}
-
-_service-rollout name:
-	docker service update --force {{quote(name)}}
-
-bundle service:
-	npm --prefix {{quote(service)}} run build
-
-build service:
-	docker build -f deploy/Dockerfile --target {{quote(service)}} \
-	  -t {{quote(env_var("IMAGE_REGISTRY") + "/brain-" + service + ":" + env_var("IMAGE_TAG"))}} \
-	  --build-arg USE_CN_MIRROR={{quote(env_var_or_default("USE_CN_MIRROR", "true"))}} \
-	  --build-arg SERVICE_EXTRA={{quote(env_var_or_default("SERVICE_EXTRA", "cpu"))}} .
-
-push service:
-	docker push {{quote(env_var("IMAGE_REGISTRY") + "/brain-" + service + ":" + env_var("IMAGE_TAG"))}}
+	docker network inspect kb-net >/dev/null 2>&1 || docker network create kb-net

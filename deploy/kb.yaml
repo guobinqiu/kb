@@ -1,0 +1,48 @@
+x-app-service: &app-service
+  env_file:
+    - .env
+  environment:
+    TZ: Asia/Shanghai
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "5"
+  networks:
+    - kb-net
+
+services:
+  kb_api:
+    container_name: kb_api
+    <<: *app-service
+    image: kb-api:${IMAGE_TAG:-dev}
+    environment:
+      TZ: Asia/Shanghai
+      KB_RABBITMQ_URL: ${RABBITMQ_URL:-amqp://kb:kb@rabbitmq:5672/%2F}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+      OTEL_SDK_DISABLED: "${OTEL_SDK_DISABLED:-false}"
+      OTEL_SERVICE_NAME: kb_api
+    build:
+      context: ..
+      dockerfile: kb_api/Dockerfile
+      args:
+        USE_CN_MIRROR: ${USE_CN_MIRROR:-true}
+    command: ["/app/.venv/bin/uvicorn", "kb_api.main:app", "--host", "0.0.0.0", "--port", "6100", "--workers", "1"]
+    expose:
+      - "6100"
+    healthcheck:
+      test: ["CMD-SHELL", "/app/.venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:6100/health', timeout=2).read()\""]
+      interval: 10s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+    volumes:
+      - ../kb_api/config:/app/kb_api/config:ro
+
+networks:
+  kb-net:
+    external: true

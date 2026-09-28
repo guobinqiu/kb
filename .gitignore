@@ -14,12 +14,13 @@ models/
 models
 
 # 数据库本地数据
+jaeger_data/
 milvus_data/
 minio_data/
-loki_data/
 pg_data/
 postgres_data/
 qdrant_data/
+rabbitmq_data/
 redis_data/
 data/
 backend/data/

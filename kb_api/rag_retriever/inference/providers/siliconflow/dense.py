@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import time
+from threading import Lock
+
+import httpx
+
+from kb_api.rag_retriever.common.config import RetryConfig
+from kb_api.rag_retriever.inference.common.retry import retry_call
+from kb_api.rag_retriever.common.upstream import upstream_error
+
+from .base import SiliconFlowModel
+from .retryable import _retryable_response
+from .schemas import _EmbeddingResponse
+
+
+class SiliconFlowDenseClient(SiliconFlowModel):
+    def __init__(self, base_url: str, model: str | None = None, timeout: float = 60.0, api_key: str | None = None, http_client: httpx.Client | None = None, *, dimensions: int | None = None, retry: RetryConfig | None = None):
+        super().__init__(base_url, model=model, timeout=timeout, api_key=api_key, http_client=http_client, retry=retry)
+        self.dimensions = dimensions
+        self._vector_size = dimensions
+        self._dimension_lock = Lock()
+
+    @property
+    def vector_size(self) -> int:
+        with self._dimension_lock:
+            if self._vector_size is None:
+                self._vector_size = len(self.embed_query("dimension probe"))
+            return self._vector_size
+
+    def ping(self) -> bool:
+        return self.ready
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._create_dense_embeddings(text)[0]
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._create_dense_embeddings(texts)
+
+    def _create_dense_embeddings(self, value: str | list[str]) -> list[list[float]]:
+        return retry_call(
+            lambda: self._create_dense_embeddings_once(value),
+            self.retry,
+            operation_name="inference.siliconflow.dense",
+        )
+
+    def _create_dense_embeddings_once(self, value: str | list[str]) -> list[list[float]]:
+        payload = {"input": value, "model": self.model, "encoding_format": "float"}
+        if self.dimensions is not None:
+            payload["dimensions"] = self.dimensions
+        started = time.perf_counter()
+        response = None
+        try:
+            response = self._client.post(
+                f"{self.base_url}/embeddings",
+                json=payload,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            self._log_call("embedding", started, response, error, dimensions=self.dimensions)
+            raise error from exc
+        try:
+            rows = sorted(_EmbeddingResponse.model_validate(response.json(), strict=True).data, key=lambda item: item.index)
+            count = 1 if isinstance(value, str) else len(value)
+            if [row.index for row in rows] != list(range(count)):
+                raise ValueError("Invalid embedding count or indices")
+            dimensions = self.dimensions if self.dimensions is not None else (len(rows[0].embedding) if rows else None)
+            if any(len(row.embedding) != dimensions for row in rows):
+                raise ValueError("Invalid embedding dimensions")
+        except (KeyError, TypeError, ValueError) as exc:
+            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            self._log_call("embedding", started, response, error, dimensions=self.dimensions)
+            raise error from exc
+        self._log_call("embedding", started, response, dimensions=self.dimensions)
+        return [row.embedding for row in rows]

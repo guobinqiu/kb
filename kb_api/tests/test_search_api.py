@@ -1,0 +1,68 @@
+from types import SimpleNamespace
+
+from kb_api.auth import hash_password
+
+
+def test_search_accepts_multiple_workspace_ids(system):
+    client = system["client"]
+    repository = system["repository"]
+    app, org = repository.create_app("Acme", "acme")
+    first = repository.create_workspace(app["id"], "Policies")
+    second = repository.create_workspace(app["id"], "Finance")
+    user = repository.create_user(
+        org_id=org["id"], name="member", password_hash=hash_password("password123"),
+    )
+    repository.add_workspace_member(first["id"], user_id=user["id"])
+    repository.add_workspace_member(second["id"], user_id=user["id"])
+    login = client.post("/api/v1/auth/login", json={"name": user["name"], "password": "password123"})
+    response = client.post(
+        "/api/v1/rag/search",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}", "X-App-Id": app["app_id"]},
+        json={"query": "policy", "workspace_ids": [second["id"], first["id"]], "file_ids": ["file-1"]},
+    )
+    assert response.status_code == 200
+    request = system["retriever"].requests[-1]["json"]
+    assert request["app_id"] == app["app_id"]
+    assert request["workspace_ids"] == sorted([first["id"], second["id"]])
+    assert request["file_ids"] == ["file-1"]
+
+
+def test_search_rejects_workspace_outside_membership(system):
+    client = system["client"]
+    repository = system["repository"]
+    app, org = repository.create_app("Acme", "acme")
+    workspace = repository.create_workspace(app["id"], "Private")
+    user = repository.create_user(
+        org_id=org["id"], name="member", password_hash=hash_password("password123"),
+    )
+    login = client.post("/api/v1/auth/login", json={"name": user["name"], "password": "password123"})
+    response = client.post(
+        "/api/v1/rag/search",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}", "X-App-Id": app["app_id"]},
+        json={"query": "policy", "workspace_ids": [workspace["id"]]},
+    )
+    assert response.status_code == 403
+    assert not system["retriever"].requests
+
+
+def test_legacy_workspace_search_path_is_not_exposed(system):
+    assert system["client"].post(
+        "/api/v1/workspaces/workspace-1/search", json={"query": "policy"}, headers=system["headers"]
+    ).status_code == 404
+
+
+def test_search_config_reports_active_retriever_capabilities(system):
+    system["retriever"].search_config = SimpleNamespace(mode="hybrid", top_k=5, rerank=True, rerank_fetch_k=20)
+    system["retriever"].vector = SimpleNamespace(supports_sparse_vector=lambda: True)
+    system["retriever"].inference = SimpleNamespace(rerank=object())
+
+    response = system["client"].get("/api/v1/rag/config", headers=system["headers"])
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "mode": "hybrid",
+        "top_k": 5,
+        "rerank": True,
+        "rerank_fetch_k": 20,
+        "capabilities": {"sparse_vector": True},
+    }

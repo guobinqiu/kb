@@ -6,39 +6,96 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'rag_test')\gexec
 
 \connect rag
 
-CREATE TABLE IF NOT EXISTS apps (
-    app_id VARCHAR(64) PRIMARY KEY,
-    api_key VARCHAR(128) NOT NULL UNIQUE,
-    presign_config TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE SCHEMA IF NOT EXISTS kb;
+
+CREATE TABLE IF NOT EXISTS kb.apps (
+    id UUID PRIMARY KEY,
+    app_id VARCHAR(64) NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    api_key TEXT UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
--- 已有应用表增加下载地址请求模板
-ALTER TABLE apps ADD COLUMN IF NOT EXISTS presign_config TEXT;
+CREATE TABLE IF NOT EXISTS kb.orgs (
+    id UUID PRIMARY KEY,
+    app_id UUID NOT NULL REFERENCES kb.apps(id) ON DELETE CASCADE,
+    parent_id UUID NULL REFERENCES kb.orgs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ
+);
 
-INSERT INTO apps (app_id, api_key, presign_config)
-VALUES (
-    'imsdom',
-    'bk_sOximdu9G4KyfSXklZvp4SPPe2iZLSu3Gh6AJLQ2a_E',
-    '{
-  "url": "http://127.0.0.1:6000/api/v1/rag/presign",
-  "method": "POST",
-  "headers": {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer bk_sOximdu9G4KyfSXklZvp4SPPe2iZLSu3Gh6AJLQ2a_E"
-  },
-  "params": {},
-  "body": {
-    "s3_url": {{ s3_url | tojson }}
-  },
-  "response_url_path": "presigned_url"
-}'
-)
-ON CONFLICT (app_id) DO UPDATE
-SET api_key = EXCLUDED.api_key,
-    presign_config = CASE
-        WHEN apps.presign_config IS NULL OR apps.presign_config = '' THEN EXCLUDED.presign_config
-        ELSE apps.presign_config
-    END,
-    updated_at = now();
+CREATE UNIQUE INDEX IF NOT EXISTS orgs_one_root_per_app
+ON kb.orgs(app_id)
+WHERE parent_id IS NULL;
+
+CREATE TABLE IF NOT EXISTS kb.users (
+    id UUID PRIMARY KEY,
+    org_id UUID REFERENCES kb.orgs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    role TEXT NOT NULL DEFAULT 'member',
+    deleted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT users_owner_org_check CHECK (
+        (role = 'owner' AND org_id IS NULL) OR (role <> 'owner' AND org_id IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS kb.workspaces (
+    id UUID PRIMARY KEY,
+    app_id UUID NOT NULL REFERENCES kb.apps(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kb.workspace_user (
+    id UUID PRIMARY KEY,
+    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES kb.users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'editor',
+    CONSTRAINT workspace_user_workspace_user_key UNIQUE (workspace_id, user_id),
+    CONSTRAINT workspace_user_role_check CHECK (role IN ('admin', 'editor', 'viewer'))
+);
+
+CREATE TABLE IF NOT EXISTS kb.workspace_org (
+    id UUID PRIMARY KEY,
+    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id) ON DELETE CASCADE,
+    org_id UUID NOT NULL REFERENCES kb.orgs(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    CONSTRAINT workspace_org_workspace_org_key UNIQUE (workspace_id, org_id),
+    CONSTRAINT workspace_org_role_check CHECK (role IN ('editor', 'viewer'))
+);
+
+CREATE TABLE IF NOT EXISTS kb.files (
+    id UUID PRIMARY KEY,
+    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    object_key TEXT,
+    s3_url TEXT,
+    mime_type TEXT,
+    size_bytes BIGINT,
+    checksum TEXT,
+    status TEXT NOT NULL,
+    error JSONB,
+    created_by UUID REFERENCES kb.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    indexed_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT files_status_check CHECK (
+        status IN ('uploaded', 'indexing', 'indexed', 'failed', 'deleting', 'delete_failed')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS orgs_parent_id_idx ON kb.orgs(parent_id);
+CREATE INDEX IF NOT EXISTS orgs_app_id_idx ON kb.orgs(app_id);
+CREATE INDEX IF NOT EXISTS users_org_id_idx ON kb.users(org_id);
+CREATE INDEX IF NOT EXISTS workspaces_app_id_idx ON kb.workspaces(app_id);
+CREATE INDEX IF NOT EXISTS workspace_user_workspace_id_idx ON kb.workspace_user(workspace_id);
+CREATE INDEX IF NOT EXISTS workspace_org_workspace_id_idx ON kb.workspace_org(workspace_id);
+CREATE INDEX IF NOT EXISTS files_workspace_id_idx ON kb.files(workspace_id);

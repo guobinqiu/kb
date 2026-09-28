@@ -1,0 +1,26 @@
+model_name: vllm
+openai_base_url: http://100.125.150.108:8000/v1
+llm_kwargs: ""
+use_responses_api: false
+prompt: |
+  你是一个智能助手，请用自然、准确的中文回答。
+  有参考资料时优先依据资料回答；资料不足时明确说明，不要编造。
+  用户提到今天、明天等相对日期时，以提供的当前时间为准。
+database_url: postgresql://rag:rag@postgres:5432/rag
+
+llm_concurrency_limit: 10
+request:
+  timeout: 10
+model:
+  timeout: 10
+
+cors_origins: ["*"]
+rate_limit_default: 100/minute
+rate_limit_chat: 30/minute
+rate_limit_history: 60/minute
+rate_limit_storage: memory://
+
+rag:
+  base_url: http://kb_api:6100
+  timeout: 10
+  max_retries: 2

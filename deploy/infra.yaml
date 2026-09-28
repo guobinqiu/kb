@@ -1,16 +1,61 @@
-version: "3.8"
-
-x-json-logging: &json-logging
-  driver: "json-file"
-  options:
-    max-size: "10m"
-    max-file: "5"
+x-infra-service: &infra-service
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "5"
+  networks:
+    - kb-net
 
 services:
+  otel-collector:
+    container_name: otel-collector
+    <<: *infra-service
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.161.0
+    command: ["--config", "/etc/otelcol/config.yaml"]
+    environment:
+      GOMEMLIMIT: 400MiB
+    mem_limit: 512m
+    depends_on:
+      - jaeger
+    expose:
+      - "4317"
+      - "4318"
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+
+  jaeger-init:
+    container_name: jaeger-init
+    image: busybox:1.37.0
+    user: "0:0"
+    restart: "no"
+    network_mode: none
+    command: ["sh", "-c", "mkdir -p /badger/keys /badger/values && chown 10001:10001 /badger /badger/keys /badger/values"]
+    volumes:
+      - ../jaeger_data:/badger
+
+  jaeger:
+    container_name: jaeger
+    <<: *infra-service
+    image: jaegertracing/jaeger:2.21.0
+    user: "10001:10001"
+    command: ["--config", "/etc/jaeger/config.yaml"]
+    depends_on:
+      jaeger-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:16686:16686"
+    expose:
+      - "4318"
+    volumes:
+      - ./jaeger/config.yaml:/etc/jaeger/config.yaml:ro
+      - ../jaeger_data:/badger
+
   postgres:
+    container_name: postgres
+    <<: *infra-service
     image: postgres:16-alpine
-    labels:
-      logging: loki
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rag}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}
@@ -21,310 +66,88 @@ services:
       timeout: 3s
       retries: 10
     ports:
-      - target: 5432
-        published: 5432
-        protocol: tcp
-        mode: host
+      - "5432:5432"
     volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/pg_data
-        target: /var/lib/postgresql/data
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
+      - ../pg_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    container_name: rabbitmq
+    <<: *infra-service
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-kb}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-kb}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ../rabbitmq_data:/var/lib/rabbitmq
 
   qdrant:
+    container_name: qdrant
+    <<: *infra-service
     image: qdrant/qdrant:v1.19.0
-    labels:
-      logging: loki
     ports:
-      - target: 6333
-        published: 6333
-        protocol: tcp
-        mode: host
-      - target: 6334
-        published: 6334
-        protocol: tcp
-        mode: host
+      - "6333:6333"
+      - "6334:6334"
     volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/qdrant_data
-        target: /qdrant/storage
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
+      - ../qdrant_data:/qdrant/storage
 
   minio:
+    container_name: minio
+    <<: *infra-service
     image: minio/minio:RELEASE.2024-05-28T17-19-04Z
-    labels:
-      logging: loki
     command: minio server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
     ports:
-      - target: 9000
-        published: 9000
-        protocol: tcp
-        mode: host
-      - target: 9001
-        published: 9001
-        protocol: tcp
-        mode: host
+      - "9000:9000"
+      - "9001:9001"
     volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/minio_data
-        target: /data
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
-
-  loki:
-    image: grafana/loki:3.4.1
-    command: -config.file=/etc/loki/config.yml
-    ports:
-      - target: 3100
-        published: 3100
-        protocol: tcp
-        mode: host
-    volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/deploy/monitor/loki-config.yml
-        target: /etc/loki/config.yml
-        read_only: true
-      - type: bind
-        source: ${PROJECT_ROOT}/loki_data
-        target: /loki
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
-
-  promtail:
-    image: grafana/promtail:3.4.1
-    command: -config.file=/etc/promtail/config.yml -config.expand-env=true
-    environment:
-      NODE_NAME: "{{.Node.Hostname}}"
-    volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/deploy/monitor/promtail-config.yml
-        target: /etc/promtail/config.yml
-        read_only: true
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-        read_only: true
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      restart_policy:
-        condition: any
+      - ../minio_data:/data
 
   etcd:
+    container_name: etcd
+    <<: *infra-service
+    profiles: ["milvus"]
     image: quay.io/coreos/etcd:v3.5.25
-    labels:
-      logging: loki
     command: >
       etcd
       -advertise-client-urls=http://etcd:2379
       -listen-client-urls http://0.0.0.0:2379
       --data-dir /etcd
     ports:
-      - target: 2379
-        published: 2379
-        protocol: tcp
-        mode: host
+      - "2379:2379"
     volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/milvus_data/standalone/etcd
-        target: /etcd
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
+      - ../milvus_data/standalone/etcd:/etcd
 
   milvus:
+    container_name: milvus
+    <<: *infra-service
+    profiles: ["milvus"]
     image: milvusdb/milvus:v3.0.0
-    labels:
-      logging: loki
     command: ["milvus", "run", "standalone"]
+    depends_on:
+      - etcd
+      - minio
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
       MINIO_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
     ports:
-      - target: 19530
-        published: 19530
-        protocol: tcp
-        mode: host
-      - target: 9091
-        published: 9091
-        protocol: tcp
-        mode: host
+      - "19530:19530"
+      - "9091:9091"
     volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/milvus_data/standalone/milvus
-        target: /var/lib/milvus
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
-
-  tei_dense:
-    image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
-    command: ["--model-id", "/model"]
-    labels:
-      logging: loki
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/models/BAAI/bge-m3
-        target: /model
-        read_only: true
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 0
-      placement:
-        constraints:
-          - node.labels.gpu == true
-      restart_policy:
-        condition: any
-
-  tei_rerank:
-    image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
-    command: ["--model-id", "/model"]
-    labels:
-      logging: loki
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/models/BAAI/bge-reranker-v2-m3
-        target: /model
-        read_only: true
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 0
-      placement:
-        constraints:
-          - node.labels.gpu == true
-      restart_policy:
-        condition: any
-
-  vllm_dense:
-    image: vllm/vllm-openai:v0.20.2
-    command: ["--model", "/model", "--served-model-name", "BAAI/bge-m3", "--runner", "pooling", "--dtype", "auto", "--trust-remote-code", "--max-model-len", "8192", "--gpu-memory-utilization", "0.20"]
-    labels:
-      logging: loki
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/models/BAAI/bge-m3
-        target: /model
-        read_only: true
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 0
-      placement:
-        constraints:
-          - node.labels.gpu == true
-      restart_policy:
-        condition: any
-
-  vllm_rerank:
-    image: vllm/vllm-openai:v0.20.2
-    command: ["--model", "/model", "--served-model-name", "BAAI/bge-reranker-v2-m3", "--runner", "pooling", "--dtype", "auto", "--trust-remote-code", "--max-model-len", "8192", "--gpu-memory-utilization", "0.20"]
-    labels:
-      logging: loki
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    volumes:
-      - type: bind
-        source: ${PROJECT_ROOT}/models/BAAI/bge-reranker-v2-m3
-        target: /model
-        read_only: true
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    logging: *json-logging
-    deploy:
-      labels:
-        group: infra
-      replicas: 0
-      placement:
-        constraints:
-          - node.labels.gpu == true
-      restart_policy:
-        condition: any
+      - ../milvus_data/standalone/milvus:/var/lib/milvus
 
 networks:
-  default:
-    name: brain-net
+  kb-net:
     external: true

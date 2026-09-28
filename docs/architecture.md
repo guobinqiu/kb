@@ -1,180 +1,141 @@
-# Brain 项目架构
+# 知识库架构
 
-## 服务关系
-
-```mermaid
-flowchart TB
-    Client["WebUI / 上游系统"] --> Gateway["Nginx · 统一入口"]
-
-    subgraph Business["业务服务"]
-        RAG["RAG API · 索引与检索"]
-        LLM["LLM · 会话与生成"]
-    end
-
-    Gateway --> RAG
-    Gateway --> LLM
-    LLM -->|知识检索| RAG
-    RAG -->|文档解析| Parser["Parser"]
-    RAG -->|向量化与重排| Inference["Inference"]
-    LLM -->|生成| Model["语言模型服务"]
-
-    subgraph Storage["持久化"]
-        Object[("对象存储")]
-        Vector[("向量数据库")]
-        DB[("PostgreSQL")]
-    end
-
-    RAG -->|按调用方引用读取文件| Object
-    RAG -->|检索索引| Vector
-    RAG -.->|可选应用管理与文件状态| DB
-    LLM -->|会话状态| DB
-```
-
-## WebUI 与 Nginx
-
-WebUI 提供管理与交互入口，Nginx 托管前端并将请求分发到 RAG API 和 LLM 服务
-
-文档管理与检索进入 RAG API，问答进入 LLM；Parser 和 Inference 由业务服务调用
-
-## RAG API
-
-以应用为数据隔离边界，核心负责鉴权、索引与检索；每个应用对应独立的向量集合。应用管理和文件状态持久化是可选能力
+## 服务边界
 
 ```mermaid
 flowchart LR
-    Key["App API Key"] --> Mode{"是否启用关系数据库"}
-    Mode -->|否| Config["部署配置中的应用绑定"]
-    Mode -->|是| DB["数据库中的应用凭据"]
-    Config --> App["应用身份"]
-    DB --> App
-    App --> Scope["应用范围内索引与检索"]
+    Client["WebUI / 上游系统"] --> Gateway["Nginx"]
+    Gateway --> KBAPI["KB API"]
+    Gateway --> Indexer["RAG Indexer"]
+    Gateway --> Chat["Chat"]
+
+    subgraph IndexerModules["RAG Indexer 进程"]
+        Parser["Parser 模块"]
+        DocumentInference["文档向量模块"]
+    end
+
+    Indexer --> Parser
+    Indexer --> DocumentInference
+    Indexer --> VDB[(VDB)]
+    Indexer --> Object[(MinIO / 文件源)]
+
+    KBAPI --> RDB[(RDB)]
+    KBAPI --> Object
+    KBAPI --> MQ[(MQ)]
+    MQ --> Indexer
+    KBAPI --> Retriever["RAG Retriever 模块"]
+    Retriever --> QueryInference["查询向量与重排模块"]
+    Retriever --> VDB
+    Chat --> KBAPI
+    Retriever --> VDB
 ```
 
-鉴权来源由部署模式决定，数据库故障不回退到配置凭据
+应用服务为 `kb_api`、`rag_indexer`、`chat` 和 `nginx`。Parser、文档 Inference 和 Retriever 都是 Python 模块，不拥有独立端口、健康检查、镜像或进程。KB API 管理 App、org 树、用户、workspace、权限、文件和任务状态，并在自身进程内运行 Retriever；索引任务通过 RabbitMQ 交给 RAG Indexer。
 
-### 索引数据流
+Indexer 位于 `kb_api/rag_indexer`，与 KB API 各自维护 `pyproject.toml`、`uv.lock`、依赖环境和 Dockerfile，共用 `kb_api/config/rag.yaml`，保留两个启动入口。两个进程通过 MQ 和结果回写 API 通信，部署均挂载同一配置目录。Indexer 只记录请求 ID，不启用 OTel 跟踪；解析和向量推理调用远程服务。
+
+每个 App 有且只有一棵 org 树，所有组织查询都从该 App 的根组织向下加载，不跨 App。平台 `owner` 不挂组织；`admin` 和 `member` 通过 `org_id` 归属当前 App 的组织。workspace 是知识库及文件的授权边界。`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。企业角色不隐式获得工作区内容权限。文件只关联 workspace，不关联 org。详见[工作区授权概要设计](workspace-authorization.md)。
+
+## RAG Indexer
+
+`rag_indexer` 只负责文档进入向量库之前的处理：
+
+1. 从 RabbitMQ 接收带 App、workspace 和文件范围的索引任务。
+2. Parser 模块读取并解析文件，输出统一文档块。
+3. Indexer 根据文档结构和长度生成分片。
+4. 文档向量模块调用 SiliconFlow 或 TEI 生成向量。
+5. 写入 VDB，并调用 KB API 回写任务结果。
 
 ```mermaid
 sequenceDiagram
-    participant C as 调用方
-    participant R as RAG API
-    participant O as 调用方文件源
-    participant P as Parser
-    participant I as Inference
-    participant V as 向量数据库
-    participant D as PostgreSQL
-
-    C->>R: 文件引用
-    opt 启用关系数据库
-        R->>D: 记录文件与索引状态
-    end
-    R->>O: 读取原始文件
-    O-->>R: 文件内容
-    R->>P: 解析文档
+    participant K as KB API
+    participant Q as MQ
+    participant R as RAG Indexer
+    participant P as Parser 模块
+    participant I as 文档向量模块
+    participant V as VDB
+    K->>Q: 发布索引任务
+    Q->>R: 下发 workspace、文件引用与 embedding 规格
+    R->>P: presigned URL 与文件名
     P-->>R: 文档块
-    R->>R: 切块、组装上下文、关联来源
-    R->>I: 文本向量化
-    I-->>R: 向量
-    R->>V: 写入片段、向量与来源
-    opt 启用关系数据库
-        R->>D: 更新索引结果
-    end
-    R-->>C: 索引完成
+    R->>R: 分片与来源关联
+    R->>I: 文档文本列表
+    I-->>R: 文档向量
+    R->>V: 写入分片与向量
+    R->>K: 回写索引结果
 ```
 
-索引在请求内同步完成，切块策略由 RAG API 管理。正文按段落独立分片，不合并不同段落；单段超长才依次按换行、句子和字符切分。表格仅以标题和完整行数据独立成片，不拼接前后文本。列表、代码和表格保留各自结构边界。直接读取调用方文件引用时，无需自建对象存储
+Parser 和文档向量模块与 Indexer 同进程调用，配置位于 `kb_api/config/rag.yaml`。外部调用按各自配置执行超时和重试。
 
-索引链路不做整体重放。Parser、Inference 和 RAG 只在各自拥有的外部调用或写入边界内重试可恢复错误；达到上限后向调用方返回失败，由调用方用同一个 `file_id` 发起业务重试
+两入口统一使用 `KB_CONFIG_FILE` 指定配置路径，默认读取 `kb_api/config/rag.yaml`。`inference` 和 `vector_db` 共用；`search`、`api` 用于管理与检索，`parser`、`chunking`、`storage` 用于索引。Embedding 规格属于知识库元数据，不属于服务配置。KB API 保存每个知识库的 `provider`、`model` 和 `dimensions`，创建索引任务时传给 Indexer；同一知识库不能在不重建 collection 的情况下更换模型或维度。
 
-### 检索数据流
+## RAG Retriever
+
+`kb_api/rag_retriever` 是 KB API 内部检索模块，职责包括：
+
+- 根据已授权的 workspace 和文件范围构建过滤条件。
+- 生成查询向量并执行 dense、sparse 或 hybrid 召回。
+- 去重并按配置执行 rerank。
+- 返回公开检索结果。
 
 ```mermaid
 sequenceDiagram
     participant C as 调用方
-    participant R as RAG API
-    participant I as Inference
-    participant V as 向量数据库
+    participant K as KB API
+    participant R as RAG Retriever 模块
+    participant I as 查询向量与重排模块
+    participant V as VDB
 
-    C->>R: 查询与文件范围
+    C->>K: 检索请求
+    K->>K: 鉴权与数据范围校验
+    K->>R: 查询与已授权范围
     R->>I: 查询向量化
     I-->>R: 查询向量
-    R->>V: 在当前应用范围内召回
-    V-->>R: 候选片段
-    R->>R: 去重
+    R->>V: 向量召回
+    V-->>R: 候选分片
     opt 启用重排
-        R->>I: 查询与候选片段
+        R->>I: 查询与候选分片
         I-->>R: 相关性排序
     end
-    R-->>C: 检索结果
+    R-->>K: 检索结果
+    K-->>C: 检索结果
 ```
 
-## Parser
+KB API 负责鉴权、计算有权访问的工作区并在进程内调用 Retriever；Retriever 在 App 的向量 collection 中按授权后的 `workspace_ids` 和可选 `file_ids` 过滤。
 
-负责文件内容提取，通过统一文档块接口向 RAG API 交付解析结果，解析后端的差异保留在服务内部
+## Chat
 
-```mermaid
-flowchart TB
-    File["文件"] --> Route{"按文档类型分流"}
-    Route -->|文本与结构化文档| Native["原生读取"]
-    Route -->|PDF| Select{"选择一个解析后端"}
-    Select --> Ark["Volcengine · 方舟 API"]
-    Select --> MP["MinerU 本地 · 4.0"]
-    Select --> MV["MinerU Cloud"]
-    Native --> Blocks["统一文档块"]
-    MP --> Blocks
-    MV --> Blocks
-    Ark --> Blocks
-    Blocks --> RAG["RAG API · 切块与索引"]
-```
-
-原生读取是 Parser 内部的公共能力，负责保留段落与表格结构，不生成检索分片。PDF 在本地解析后端与方舟之间选择一个，使用方舟仍运行 Parser 服务，但不加载本地 PDF 模型
-
-## Inference
-
-集中承载检索模型推理，向业务层提供两类独立能力
-
-| 能力 | 输入 | 输出 | 使用阶段 |
-| --- | --- | --- | --- |
-| 向量化 | 文本 | 稠密向量、可选稀疏向量 | 索引、检索 |
-| 重排 | 查询与候选片段 | 相关性排序 | 检索，可选 |
-
-索引与查询必须使用一致的向量模型；重排只处理召回后的候选集
-
-本地模型与外部供应商由 Inference 统一适配，RAG 只依赖服务接口及其能力声明
-
-```mermaid
-flowchart LR
-    RAG["RAG API"] --> Inference["Inference · 统一推理接口"]
-    Inference --> Local["本地模型"]
-    Inference --> Cloud["SiliconFlow"]
-```
-
-模型、供应商与计算资源由 Inference 管理，与 RAG API 的业务编排独立部署
-
-## LLM
-
-每轮固定执行知识检索后再生成回答，当前消息用于检索，历史会话与检索结果共同组成生成上下文
-
-```mermaid
-flowchart LR
-    Request["当前用户消息"] --> Retrieval["RAG API · 知识检索"]
-    Request --> Context["组装生成上下文"]
-    Retrieval -->|参考内容| Context
-    Context --> Model["语言模型服务"]
-    Model --> Answer["流式回答"]
-    DB[("PostgreSQL")] -->|会话历史| Context
-    Answer -->|会话检查点| DB
-```
+Chat 负责会话编排和模型生成，只调用 KB API，不直接访问 Retriever、VDB 或向量模型。
 
 ## 基础服务
 
-| 服务 | 数据职责 | 访问方 |
+| 服务 | 职责 |
+| --- | --- |
+| RDB | App、org 树、用户、workspace 授权和文件状态 |
+| VDB | 文档分片、向量和来源元数据 |
+| MinIO | 原始文件对象 |
+| MQ | 连接 KB API 与 RAG Indexer 的异步任务通道 |
+
+基础服务与应用服务通过 Docker Compose 网络连接。服务边界由进程和部署单元决定，模块边界由 Python 包决定。
+
+## 部署单元
+
+各服务使用独立 Compose 项目，共享外部 bridge 网络 `kb-net`：
+
+| Compose 文件 | 项目 | 命令 |
 | --- | --- | --- |
-| PostgreSQL | 应用凭据、文件元数据与索引状态；会话状态 | RAG API、LLM 分别管理各自数据 |
-| 对象存储 | 原始文件 | RAG API、上游系统 |
-| 向量数据库 | 文档片段、向量与来源信息 | RAG API |
-| Loki / Promtail | 日志汇集与查询 | 业务服务与管理台 |
+| `deploy/infra.yaml` | `kb-infra` | `just infra up/down` |
+| `deploy/kb.yaml` | `kb-api` | `just kb up/down/build` |
+| `deploy/indexer.yaml` | `kb-indexer` | `just indexer up/down/build` |
+| `deploy/chat.yaml` | `kb-chat` | `just chat up/down/build` |
+| `deploy/webui.yaml` | `kb-webui` | `just webui up/down/build` |
+| `deploy/tei.yaml` | `kb-tei` | `just tei up/down` |
+| `deploy/mineru.yaml` | `kb-mineru` | `just mineru up/down` |
 
-向量数据库通过统一适配接口接入，Qdrant 与 Milvus 选择其一；对象存储采用 S3 兼容接口
+每次只传一个动作，例如 `just indexer up`。不提供 `restart/start/stop`，也没有 `app`、`bundle` 或顶层 `build` 入口。
 
-各应用服务独立部署，共享持久化服务；跨服务调用传递同一追踪标识，用于关联解析、推理、检索和生成链路
+基础服务默认包含 PostgreSQL、Qdrant、RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger。Milvus 与 etcd 仅在 `milvus` profile 下启用，不默认启动。KB API 和 Indexer 的 `vector_db.qdrant.enable` 均为 `true`、`vector_db.milvus.enable` 均为 `false`，地址使用 `http://qdrant:6333`；选择 Milvus 时需同时切换两边配置，并显式启用该 profile。
+
+`kb/indexer/chat up` 执行 `docker compose up -d --build --force-recreate`；`infra/tei/mineru up` 执行 `up -d`，不构建镜像。WebUI 的 `up` 先执行 `npm --prefix webui run build`，再执行 `up -d --force-recreate`；`just webui build` 只生成前端静态文件，不构建镜像。KB API、Indexer 和 Chat 的 `build` 构建各自镜像。MinerU 使用按官方方式在本地已构建的 `mineru:4`，不是官方 registry 镜像。
+
+所有 `down` 使用对应项目的原生 Compose `down`，不删除数据、镜像或共享外部网络 `kb-net`。配置与代码变更后使用对应服务的 `up` 强制重新创建容器。

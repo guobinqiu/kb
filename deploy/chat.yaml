@@ -1,0 +1,33 @@
+x-app-service: &app-service
+  env_file:
+    - .env
+  environment:
+    TZ: Asia/Shanghai
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "5"
+  networks:
+    - kb-net
+
+services:
+  chat:
+    container_name: chat
+    <<: *app-service
+    image: kb-chat:${IMAGE_TAG:-dev}
+    build:
+      context: ..
+      dockerfile: chat/Dockerfile
+      args:
+        USE_CN_MIRROR: ${USE_CN_MIRROR:-true}
+    command: ["/app/.venv/bin/uvicorn", "chat.src.main:app", "--host", "0.0.0.0", "--port", "6001", "--workers", "1"]
+    volumes:
+      - ../chat/config:/app/chat/config:ro
+      - ../chat/src:/app/chat/src
+      - ../chat/tests:/app/chat/tests
+
+networks:
+  kb-net:
+    external: true
