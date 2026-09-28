@@ -5,6 +5,12 @@
 
 milvus_data/
 qdrant_data/
+pg_data/
+postgres_data/
+minio_data/
+rabbitmq_data/
+jaeger_data/
+deploy/.env
 models/
 services/*/.venv/
 services/*/.pytest_cache/
