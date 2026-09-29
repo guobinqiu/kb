@@ -66,12 +66,13 @@ def test_orgs_and_users_crud_are_subtree_scoped(system):
     assert forbidden.status_code == 403
 
 
-def test_org_list_is_subtree_scoped_without_granting_workspace_access(system):
+def test_org_list_shows_entire_app_without_granting_workspace_access(system):
     created = _create_app(system)
     org = created["org"]
     branch = system["dao"].create_org(created["app"]["id"], org["id"], "Branch")
     leaf = system["dao"].create_org(created["app"]["id"], branch["id"], "Leaf")
-    system["dao"].create_org(created["app"]["id"], org["id"], "Sibling")
+    sibling = system["dao"].create_org(created["app"]["id"], org["id"], "Sibling")
+    other = _create_app(system, "Other")
     user = system["dao"].create_user(
         org_id=branch["id"], name="branch-member", password_hash=hash_password("password-123")
     )
@@ -80,7 +81,11 @@ def test_org_list_is_subtree_scoped_without_granting_workspace_access(system):
 
     response = system["client"].get(f"/api/v1/orgs?app_id={created['app']['id']}", headers=headers)
     assert response.status_code == 200
-    assert {org["id"] for org in response.json()["orgs"]} == {branch["id"], leaf["id"]}
+    expected_org_ids = {org["id"], branch["id"], leaf["id"], sibling["id"]}
+    assert {org["id"] for org in response.json()["orgs"]} == expected_org_ids
+    response = system["client"].get("/api/v1/orgs", headers=headers)
+    assert {org["id"] for org in response.json()["orgs"]} == expected_org_ids
+    assert system["client"].get(f"/api/v1/orgs?app_id={other['app']['id']}", headers=headers).status_code == 403
     workspace = system["client"].post(
         f"/api/v1/apps/{created['app']['id']}/workspaces", json={"name": "Private"}, headers=system["headers"]
     ).json()["workspace"]

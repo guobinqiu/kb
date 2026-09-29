@@ -40,9 +40,6 @@ def list_orgs(request: Request, app_id: str | None = None, include_disabled: boo
             None if user["role"] == "owner" else user["org_id"],
             include_disabled=include_disabled,
         )
-    if user["role"] != "owner":
-        visible_org_ids = dao.subtree_org_ids(user["org_id"])
-        orgs = [org for org in orgs if org["id"] in visible_org_ids]
     return {"orgs": orgs}
 
 
