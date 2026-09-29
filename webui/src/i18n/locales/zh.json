@@ -34,7 +34,10 @@
     "changePassword": "修改密码",
     "oldPassword": "当前密码",
     "newPassword": "新密码",
-    "passwordChanged": "密码已修改"
+    "passwordChanged": "密码已修改",
+    "resetPassword": "重置密码",
+    "passwordMinLength": "密码至少 8 位",
+    "passwordReset": "{name} 的密码已重置"
   },
   "common": {
     "retry": "重试",

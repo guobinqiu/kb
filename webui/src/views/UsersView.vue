@@ -16,10 +16,13 @@
         <el-table-column :label="t('users.role')" min-width="120"><template #default="{ row }">{{ t(`users.roles.${row.role}`) }}</template></el-table-column>
         <el-table-column :label="t('users.status')" min-width="100"><template #default="{ row }">{{ row.deleted_at ? t('users.disabled') : t('users.active') }}</template></el-table-column>
         <el-table-column v-if="!platformAccounts" :label="t('users.org')" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ orgName(row.org_id) }}</template></el-table-column>
-        <el-table-column :label="t('common.actions')" width="132" align="right">
+        <el-table-column :label="t('common.actions')" width="164" align="right">
           <template #default="{ row }">
             <el-tooltip :content="t('common.edit')">
               <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="Edit" circle size="small" :aria-label="t('common.edit')" @click="openEdit(row)" />
+            </el-tooltip>
+            <el-tooltip :content="t('auth.resetPassword')">
+              <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="Key" circle size="small" :aria-label="t('auth.resetPassword')" @click="openResetPassword(row)" />
             </el-tooltip>
             <el-tooltip :content="row.deleted_at ? t('common.restore') : t('common.disable')">
               <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="row.deleted_at ? RefreshLeft : Delete" circle size="small" :type="row.deleted_at ? 'primary' : 'danger'" plain :aria-label="row.deleted_at ? t('common.restore') : t('common.disable')" :loading="deletingId === row.id" @click="row.deleted_at ? restoreUser(row) : deleteUser(row)" />
@@ -62,6 +65,17 @@
         <DialogActions :loading="changingPassword" @cancel="passwordDialog = false" @confirm="submitPassword" />
       </template>
     </el-dialog>
+    <el-dialog v-model="resetPasswordDialog" :title="t('auth.resetPassword')" width="min(420px, 94vw)" :close-on-click-modal="!resettingPassword" :close-on-press-escape="!resettingPassword" :show-close="!resettingPassword" @closed="resetPasswordForm = { password: '' }">
+      <el-form ref="resetPasswordFormRef" :model="resetPasswordForm" label-position="top" @submit.prevent="submitResetPassword">
+        <el-form-item :label="platformAccounts ? t('accounts.name') : t('auth.name')"><span>{{ resetPasswordUser?.name }}</span></el-form-item>
+        <el-form-item prop="password" :label="t('auth.newPassword')" :rules="[{ required: true, min: 8, message: t('auth.passwordMinLength'), trigger: 'blur' }]">
+          <el-input v-model="resetPasswordForm.password" type="password" autocomplete="new-password" show-password :disabled="resettingPassword" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <DialogActions :loading="resettingPassword" @cancel="!resettingPassword && (resetPasswordDialog = false)" @confirm="submitResetPassword" />
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -69,7 +83,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Delete, Edit, Lock, Plus, RefreshLeft } from '@element-plus/icons-vue'
+import { Delete, Edit, Key, Lock, Plus, RefreshLeft } from '@element-plus/icons-vue'
 import RefreshButton from '../components/RefreshButton.vue'
 import SectionHeader from '../components/SectionHeader.vue'
 import DialogActions from '../components/DialogActions.vue'
@@ -105,6 +119,11 @@ const form = ref({ org_id: null, name: '', password: '', role: 'member' })
 const passwordDialog = ref(false)
 const passwordForm = ref({ old: '', new: '' })
 const changingPassword = ref(false)
+const resetPasswordDialog = ref(false)
+const resetPasswordUser = ref(null)
+const resetPasswordForm = ref({ password: '' })
+const resetPasswordFormRef = ref(null)
+const resettingPassword = ref(false)
 let fetchRequestId = 0
 let orgsRequestId = 0
 
@@ -225,6 +244,28 @@ async function submitPassword() {
     showToast('error', errorMessage(err))
   } finally {
     changingPassword.value = false
+  }
+}
+
+function openResetPassword(user) {
+  resetPasswordUser.value = user
+  resetPasswordForm.value = { password: '' }
+  resetPasswordFormRef.value?.clearValidate()
+  resetPasswordDialog.value = true
+}
+
+async function submitResetPassword() {
+  if (resettingPassword.value) return
+  if (!await resetPasswordFormRef.value.validate().catch(() => false)) return
+  resettingPassword.value = true
+  try {
+    await updateUser(resetPasswordUser.value.id, { password: resetPasswordForm.value.password })
+    resetPasswordDialog.value = false
+    showToast('success', t('auth.passwordReset', { name: resetPasswordUser.value.name }))
+  } catch (err) {
+    showToast('error', errorMessage(err))
+  } finally {
+    resettingPassword.value = false
   }
 }
 

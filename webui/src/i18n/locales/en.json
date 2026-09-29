@@ -34,7 +34,10 @@
     "changePassword": "Change password",
     "oldPassword": "Current password",
     "newPassword": "New password",
-    "passwordChanged": "Password changed"
+    "passwordChanged": "Password changed",
+    "resetPassword": "Reset password",
+    "passwordMinLength": "Password must be at least 8 characters",
+    "passwordReset": "Password reset for {name}"
   },
   "common": {
     "retry": "Retry",
