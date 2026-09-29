@@ -213,8 +213,16 @@
     "noChildren": "No child organizations",
     "myAccount": "My account",
     "platformAccounts": "Platform accounts",
-    "orgAccounts": "Organization accounts",
     "viewChunks": "View chunks"
+  },
+  "accounts": {
+    "create": "Create account",
+    "name": "Account name",
+    "created": "Account created",
+    "restored": "Account {name} restored",
+    "deleted": "Account {name} disabled",
+    "deleteConfirm": "Disable account {name}?",
+    "empty": "No accounts"
   },
   "users": {
     "title": "Users",

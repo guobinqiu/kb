@@ -213,8 +213,16 @@
     "noChildren": "暂无下级组织",
     "myAccount": "我的账户",
     "platformAccounts": "平台账户",
-    "orgAccounts": "组织账户",
     "viewChunks": "查看分片"
+  },
+  "accounts": {
+    "create": "新建账户",
+    "name": "账户名",
+    "created": "账户已创建",
+    "restored": "账户 {name} 已恢复",
+    "deleted": "账户 {name} 已停用",
+    "deleteConfirm": "停用账户 {name}？",
+    "empty": "暂无账户"
   },
   "users": {
     "title": "用户",

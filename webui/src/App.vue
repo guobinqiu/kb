@@ -57,6 +57,10 @@
                 <span>{{ t(section.label) }}</span>
               </el-menu-item>
             </el-sub-menu>
+            <el-menu-item v-if="currentUser?.role === 'owner'" index="/platform-accounts">
+              <el-icon><User /></el-icon>
+              <span>{{ t('workspace.platformAccounts') }}</span>
+            </el-menu-item>
             <el-menu-item class="side-logout" index="logout">
               <el-icon><SwitchButton /></el-icon>
               <span>{{ t('auth.logout') }}</span>
@@ -141,7 +145,7 @@ function onMenuSelect(index) {
     logout()
     return
   }
-  if (index === '/apps') {
+  if (index === '/apps' || index === '/platform-accounts') {
     router.push(index)
     return
   }

@@ -1,25 +1,21 @@
 <template>
   <section class="workspace-panel users-view">
-    <SectionHeader :title="t('users.title')" :description="platformAccounts ? t('workspace.platformAccounts') : selectedOrg?.name || t('users.selectOrg')">
+    <SectionHeader :title="platformAccounts ? t('workspace.platformAccounts') : t('users.title')" :description="platformAccounts ? '' : selectedOrg?.name || t('users.selectOrg')">
       <template #actions>
         <el-button :icon="Lock" @click="passwordDialog = true">{{ t('workspace.myAccount') }}</el-button>
-        <el-button type="primary" :icon="Plus" :disabled="!canManage || (!platformAccounts && !effectiveOrgId) || (effectiveOrgId && isOrgInactive(effectiveOrgId))" @click="dialogVisible = true">{{ t('users.create') }}</el-button>
+        <el-button type="primary" :icon="Plus" :disabled="!canManage || (!platformAccounts && !effectiveOrgId) || (effectiveOrgId && isOrgInactive(effectiveOrgId))" @click="dialogVisible = true">{{ t(`${accountLabels}.create`) }}</el-button>
       </template>
     </SectionHeader>
 
     <div class="member-toolbar">
-      <el-radio-group v-if="currentUser?.role === 'owner'" v-model="platformAccounts" size="small">
-        <el-radio-button :value="false">{{ t('workspace.orgAccounts') }}</el-radio-button>
-        <el-radio-button :value="true">{{ t('workspace.platformAccounts') }}</el-radio-button>
-      </el-radio-group>
       <RefreshButton :loading="loading" :disabled="!platformAccounts && !effectiveOrgId" @click="fetchUsers" />
     </div>
 
       <el-table v-if="visibleUsers.length || loading" :data="visibleUsers" v-loading="loading" style="width: 100%">
-        <el-table-column prop="name" :label="t('auth.name')" min-width="180" />
+        <el-table-column prop="name" :label="platformAccounts ? t('accounts.name') : t('auth.name')" min-width="180" />
         <el-table-column :label="t('users.role')" min-width="120"><template #default="{ row }">{{ t(`users.roles.${row.role}`) }}</template></el-table-column>
         <el-table-column :label="t('users.status')" min-width="100"><template #default="{ row }">{{ row.deleted_at ? t('users.disabled') : t('users.active') }}</template></el-table-column>
-        <el-table-column :label="t('users.org')" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ orgName(row.org_id) }}</template></el-table-column>
+        <el-table-column v-if="!platformAccounts" :label="t('users.org')" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ orgName(row.org_id) }}</template></el-table-column>
         <el-table-column :label="t('common.actions')" width="132" align="right">
           <template #default="{ row }">
             <el-tooltip :content="t('common.edit')">
@@ -31,9 +27,9 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else :description="platformAccounts || effectiveOrgId ? t('users.empty') : t('users.selectOrg')" />
+      <el-empty v-else :description="platformAccounts || effectiveOrgId ? t(`${accountLabels}.empty`) : t('users.selectOrg')" />
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? t('common.edit') : t('users.create')" width="min(480px, 94vw)">
+    <el-dialog v-model="dialogVisible" :title="editingId ? t('common.edit') : t(`${accountLabels}.create`)" width="min(480px, 94vw)">
       <el-form label-position="top" @submit.prevent="submitUser">
         <el-form-item v-if="!platformAccounts" :label="t('users.org')">
           <el-tree-select
@@ -45,8 +41,8 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item v-if="!editingId" :label="t('auth.name')"><el-input v-model.trim="form.name" autocomplete="off" /></el-form-item>
-        <el-form-item :label="t('users.role')">
+        <el-form-item v-if="!editingId" :label="platformAccounts ? t('accounts.name') : t('auth.name')"><el-input v-model.trim="form.name" autocomplete="off" /></el-form-item>
+        <el-form-item v-if="!platformAccounts || editingId" :label="t('users.role')">
           <el-select v-model="form.role" style="width: 100%">
             <el-option v-for="role in assignableRoles" :key="role" :label="t(`users.roles.${role}`)" :value="role" />
           </el-select>
@@ -84,18 +80,20 @@ import { confirmBox } from '../utils/messageBox'
 import { errorMessage, showToast } from '../utils/toast'
 import { buildOrgTree, descendantOrgs, isOrgInactive as orgIsInactive } from '../utils/organization'
 
+const props = defineProps({ platformAccounts: { type: Boolean, default: false } })
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const { currentUser } = storeToRefs(useAuthStore())
 const canManage = computed(() => ['owner', 'admin'].includes(currentUser.value?.role))
-const assignableRoles = computed(() => form.value.org_id == null ? ['owner'] : ['member', 'admin'])
+const assignableRoles = computed(() => platformAccounts.value ? ['owner'] : ['member', 'admin'])
 const appId = computed(() => route.params.app_id)
 const orgs = ref([])
 const users = ref([])
 const selectedOrgId = computed(() => route.query.org_id || null)
 const selectedOrg = computed(() => orgs.value.find(org => org.id === selectedOrgId.value))
-const platformAccounts = ref(false)
+const platformAccounts = computed(() => props.platformAccounts)
+const accountLabels = computed(() => platformAccounts.value ? 'accounts' : 'users')
 const effectiveOrgId = computed(() => platformAccounts.value ? null : selectedOrgId.value)
 const visibleUsers = computed(() => platformAccounts.value ? users.value.filter(user => user.org_id == null) : users.value)
 const loading = ref(false)
@@ -125,6 +123,7 @@ function orgName(orgId) {
 }
 
 async function fetchOrgs() {
+  if (platformAccounts.value) return
   const requestId = ++orgsRequestId
   try {
     const result = await getOrgs(appId.value, canManage.value)
@@ -168,7 +167,7 @@ async function submitUser() {
     }
     dialogVisible.value = false
     form.value = { org_id: effectiveOrgId.value, name: '', password: '', role: platformAccounts.value ? 'owner' : 'member' }
-    showToast('success', t('users.created'))
+    showToast('success', t(`${accountLabels.value}.created`))
     await fetchUsers()
   } catch (err) {
     showToast('error', errorMessage(err))
@@ -187,7 +186,7 @@ async function restoreUser(user) {
   deletingId.value = user.id
   try {
     await updateUser(user.id, { deleted_at: null })
-    showToast('success', t('users.restored', { name: user.name }))
+    showToast('success', t(`${accountLabels.value}.restored`, { name: user.name }))
     await fetchUsers()
   } catch (err) {
     showToast('error', errorMessage(err))
@@ -198,14 +197,14 @@ async function restoreUser(user) {
 
 async function deleteUser(user) {
   try {
-    await confirmBox(t, t('users.deleteConfirm', { name: user.name }), t('common.delete'), { type: 'warning' })
+    await confirmBox(t, t(`${accountLabels.value}.deleteConfirm`, { name: user.name }), t('common.delete'), { type: 'warning' })
   } catch {
     return
   }
   deletingId.value = user.id
   try {
     await removeUser(user.id)
-    showToast('success', t('users.deleted', { name: user.name }))
+    showToast('success', t(`${accountLabels.value}.deleted`, { name: user.name }))
     await fetchUsers()
   } catch (err) {
     showToast('error', errorMessage(err))
@@ -233,14 +232,8 @@ watch(dialogVisible, visible => {
   if (!visible) editingId.value = null
   else if (!editingId.value) form.value = { org_id: effectiveOrgId.value, name: '', password: '', role: platformAccounts.value ? 'owner' : 'member' }
 })
-watch(() => form.value.org_id, orgId => {
-  if (orgId == null) form.value.role = 'owner'
-  else if (form.value.role === 'owner') form.value.role = 'member'
-})
 watch([effectiveOrgId, platformAccounts], fetchUsers, { immediate: true })
-watch(selectedOrgId, () => { platformAccounts.value = false })
 watch(appId, async () => {
-  platformAccounts.value = false
   users.value = []
   await fetchOrgs()
 })

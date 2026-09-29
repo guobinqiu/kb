@@ -36,10 +36,10 @@ def _can_delete_workspace(user: dict, workspace: dict, role: str | None) -> bool
     return user["role"] == "owner" or (role == "admin" and workspace.get("created_by") == user["id"])
 
 
-def can_manage_app(dao, user: dict, app_id: str) -> bool:
+def can_create_workspace(dao, user: dict, app_id: str) -> bool:
     if user["role"] == "owner":
         return True
-    if user["role"] != "admin" or not user.get("org_id"):
+    if user["role"] not in {"admin", "member"} or not user.get("org_id"):
         return False
     org = dao.get_org(user["org_id"])
     return bool(org and org["app_id"] == app_id)

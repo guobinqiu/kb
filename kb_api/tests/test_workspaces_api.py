@@ -29,7 +29,7 @@ def test_workspace_membership_is_independent_of_organization(system):
     workspace = created_workspace.json()["workspace"]
     assert workspace["app_id"] == app["id"]
     assert client.get(f"/api/v1/apps/{app['id']}/workspaces", headers=member_headers).json() == {
-        "workspaces": [], "permissions": {"workspace.create": False},
+        "workspaces": [], "permissions": {"workspace.create": True},
     }
 
     added = client.post(
@@ -59,6 +59,39 @@ def test_workspace_membership_is_independent_of_organization(system):
         f"/api/v1/workspaces/{workspace['id']}/members/{added.json()['member']['id']}?type=user",
         headers=member_headers,
     ).status_code == 403
+
+
+def test_member_can_create_workspace_in_own_app_and_manage_its_members(system):
+    client = system["client"]
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    other_app, _ = dao.create_app("Other", "other")
+    member = dao.create_user(
+        org_id=org["id"], name="creator_member",
+        password_hash=hash_password("password123"),
+    )
+    colleague = dao.create_user(
+        org_id=org["id"], name="colleague",
+        password_hash=hash_password("password123"),
+    )
+    login = client.post("/api/v1/auth/login", json={"name": member["name"], "password": "password123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.post(f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Member Workspace"}, headers=headers)
+    assert response.status_code == 201
+    workspace = response.json()["workspace"]
+    assert workspace["created_by"] == member["id"]
+    detail = client.get(f"/api/v1/workspaces/{workspace['id']}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["role"] == "admin"
+    assert detail.json()["permissions"]["workspace.members.manage"] is True
+    assert client.post(
+        f"/api/v1/workspaces/{workspace['id']}/members",
+        json={"type": "user", "id": colleague["id"], "role": "editor"}, headers=headers,
+    ).status_code == 201
+    assert client.post(
+        f"/api/v1/apps/{other_app['id']}/workspaces", json={"name": "Forbidden"}, headers=headers,
+    ).status_code == 403
+    assert dao.list_workspaces(other_app["id"]) == []
 
 
 def test_search_uses_authorized_workspaces_not_organization_subtree(system):

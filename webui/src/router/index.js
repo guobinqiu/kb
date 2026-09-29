@@ -11,12 +11,15 @@ import LlmView from '../views/LlmView.vue'
 import WorkspacesView from '../views/WorkspacesView.vue'
 import WorkspaceShellView from '../views/WorkspaceShellView.vue'
 import MembersView from '../views/MembersView.vue'
+import PlatformAccountsView from '../views/PlatformAccountsView.vue'
+import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: LoginView, meta: { public: true } },
     { path: '/apps', component: AppsView },
+    { path: '/platform-accounts', component: PlatformAccountsView, meta: { ownerOnly: true } },
     {
       path: '/apps/:app_id',
       component: WorkspaceView,
@@ -47,10 +50,19 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const token = localStorage.getItem('rag_token')
   if (!token && !to.meta.public) return { path: '/login' }
   if (token && to.path === '/login') return { path: '/apps' }
+  if (token && to.meta.ownerOnly) {
+    const auth = useAuthStore()
+    try {
+      const user = auth.currentUser || await auth.fetchCurrentUser()
+      if (user.role !== 'owner') return { path: '/apps' }
+    } catch {
+      return { path: '/login' }
+    }
+  }
 })
 
 export default router

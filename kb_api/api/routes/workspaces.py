@@ -15,7 +15,7 @@ from kb_api.api.permissions import (
     WORKSPACE_DELETE,
     WORKSPACE_MEMBERS_MANAGE,
     WORKSPACE_UPDATE,
-    can_manage_app,
+    can_create_workspace,
     has_workspace_permission,
     workspace_permissions,
 )
@@ -60,7 +60,7 @@ def list_workspaces(app_id: str, request: Request, user=Depends(current_user)):
          "permissions": workspace_permissions(dao, user, item)}
         for item in workspaces if dao.has_workspace_access(user, item["id"])
     ]
-    return {"workspaces": workspaces, "permissions": {WORKSPACE_CREATE: can_manage_app(dao, user, app_id)}}
+    return {"workspaces": workspaces, "permissions": {WORKSPACE_CREATE: can_create_workspace(dao, user, app_id)}}
 
 
 @apps_router.post("/{app_id}/workspaces", status_code=status.HTTP_201_CREATED)
@@ -68,8 +68,8 @@ def create_workspace(app_id: str, body: WorkspaceCreate, request: Request, user=
     dao = request.app.state.dao
     if not dao.get_app(app_id):
         raise HTTPException(status_code=404, detail="App not found")
-    if not can_manage_app(dao, user, app_id):
-        raise HTTPException(status_code=403, detail="Administrator required")
+    if not can_create_workspace(dao, user, app_id):
+        raise HTTPException(status_code=403, detail="Workspace creation denied")
     return {"workspace": dao.create_workspace(app_id, body.name, creator_id=user["id"])}
 
 
