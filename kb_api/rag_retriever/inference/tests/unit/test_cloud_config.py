@@ -2,6 +2,7 @@ import pytest
 import yaml
 
 from kb_api.rag_retriever.inference.config_loader import load_inference_config
+from kb_api.rag_retriever.inference.service import load_inference_components
 
 
 pytestmark = pytest.mark.unit
@@ -44,8 +45,6 @@ def test_siliconflow_variants_share_provider(tmp_path, monkeypatch, provider, ba
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_siliconflow_rerank_enable_controls_loaded_client(tmp_path, monkeypatch, enabled):
-    from kb_api.rag_retriever.inference.service import load_inference_components
-
     monkeypatch.setenv("SILICONFLOW_CN_API_KEY", "test-key")
     path = tmp_path / "inference.yaml"
     path.write_text(yaml.safe_dump({"inference": {"siliconflow-cn": {
@@ -107,4 +106,3 @@ def test_inference_config_exposes_active_embedding(tmp_path, monkeypatch):
     assert sorted((item.provider, item.model, item.dimensions) for item in config.dense_models) == [
         ("siliconflow-cn", "Qwen/Qwen3-Embedding-0.6B", 1024),
     ]
-

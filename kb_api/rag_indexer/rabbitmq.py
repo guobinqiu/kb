@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 import time
 
 import httpx
 
 from kb_api.rag_indexer.index_tasks import IndexTaskConsumer
+import pika
 
 
 logger = logging.getLogger("rag_indexer")
@@ -21,26 +21,19 @@ class RabbitIndexWorker:
         self.callback_url = callback_url
         self.callback_timeout = callback_timeout
         self._channel = None
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="index-task-worker", daemon=True)
+        self._stopped = False
         self._consumer = IndexTaskConsumer(state, self)
 
-    def start(self) -> None:
-        self._thread.start()
-
     def stop(self) -> None:
-        self._stop.set()
-        self._thread.join(timeout=5)
+        self._stopped = True
 
     def post(self, value: dict) -> None:
         with httpx.Client(timeout=self.callback_timeout) as client:
             response = client.post(self.callback_url, json=value)
             response.raise_for_status()
 
-    def _run(self) -> None:
-        import pika
-
-        while not self._stop.is_set():
+    def run(self) -> None:
+        while not self._stopped:
             connection = None
             try:
                 connection = pika.BlockingConnection(pika.URLParameters(self.url))
@@ -48,12 +41,12 @@ class RabbitIndexWorker:
                 self._channel.queue_declare(queue=self.task_queue, durable=True)
                 self._channel.basic_qos(prefetch_count=1)
                 self._channel.basic_consume(queue=self.task_queue, on_message_callback=self._on_message)
-                while not self._stop.is_set() and connection.is_open:
+                while not self._stopped and connection.is_open:
                     connection.process_data_events(time_limit=1)
             except Exception as exc:
-                if not self._stop.is_set():
+                if not self._stopped:
                     logger.exception("RabbitMQ index worker failed", extra={"event": "index_worker_failed", "error": str(exc)})
-                    self._stop.wait(2)
+                    time.sleep(2)
             finally:
                 self._channel = None
                 if connection is not None and connection.is_open:

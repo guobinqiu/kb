@@ -3,11 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
+from uuid import uuid4
 
-from kb_api.rag_indexer.common.tracing import get_trace_id
-from kb_api.rag_indexer.common.upstream import UpstreamServiceError
-from kb_api.rag_indexer.core.api.schemas import PresignRequest
-from kb_api.rag_indexer.core.api.services.files import presign_object
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError, _task_trace_id, get_trace_id
+from kb_api.rag_indexer.clients.minio import presign_object
 from kb_api.rag_indexer.core.index import index_presigned_file
 
 
@@ -54,9 +53,13 @@ class IndexTaskConsumer:
         self.callback = callback
 
     def handle(self, value: dict) -> dict:
-        result = task_result(self.state, value)
-        self.callback.post(result)
-        return result
+        token = _task_trace_id.set(uuid4().hex)
+        try:
+            result = task_result(self.state, value)
+            self.callback.post(result)
+            return result
+        finally:
+            _task_trace_id.reset(token)
 
 
 def process_index_task(state, task: IndexTask) -> dict:
@@ -110,7 +113,7 @@ def task_result(state, value: dict) -> dict:
 
 
 def _presigned_url(state, s3_url: str) -> str:
-    return presign_object(state, PresignRequest(s3_url=s3_url))["presigned_url"]
+    return presign_object(state.config.storage, s3_url)
 
 
 def _result(task: IndexTask, **values) -> dict:

@@ -6,7 +6,7 @@ import time
 import httpx
 
 from kb_api.rag_retriever.common.config import RetryConfig
-from kb_api.rag_retriever.common.tracing import get_trace_id
+from kb_api.api.telemetry import get_trace_id
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
 
 
@@ -17,7 +17,6 @@ class TeiModel:
     def __init__(self, base_url: str, model: str, timeout: float = 60.0, http_client: httpx.Client | None = None, retry: RetryConfig | None = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
-        self.model_name = model
         self.timeout = timeout
         self._client = http_client or httpx.Client(timeout=timeout)
         self.retry = retry or RetryConfig()
@@ -26,9 +25,6 @@ class TeiModel:
     def close(self) -> None:
         self._client.close()
         self.ready = False
-
-    def stop(self) -> None:
-        self.close()
 
     def _log_call(self, operation: str, started: float, response: httpx.Response | None, error: UpstreamServiceError | None = None, **context) -> None:
         logger.log(

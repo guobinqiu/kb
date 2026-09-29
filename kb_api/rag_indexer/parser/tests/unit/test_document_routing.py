@@ -1,4 +1,12 @@
 import pytest
+from kb_api.rag_indexer.parser.service import ParserService
+from kb_api.rag_indexer.parser.common.config import ParserConfig
+from kb_api.rag_indexer.parser.documents.md import MdBlockParser
+from kb_api.rag_indexer.parser.documents.txt import TxtBlockParser
+import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
+from PIL import Image
+from kb_api.rag_indexer.parser.common.schema import TextBlock
+from kb_api.rag_indexer.parser.common.config import MineruApiServerConfig
 
 
 pytestmark = pytest.mark.unit
@@ -45,24 +53,18 @@ def _create_minimal_pdf(path: str, text: str):
 
 
 def _parse_file(filepath: str, original_filename: str | None = None, parser=None):
-    from kb_api.rag_indexer.parser.service import ParserService
-    from kb_api.rag_indexer.parser.common.config import ParserConfig
 
     parser_service = ParserService(parser or ParserConfig())
     return parser_service.parse_file(filepath, original_filename=original_filename)
 
 
 def test_document_parsers_use_suffix_module_names():
-    from kb_api.rag_indexer.parser.documents.md import MdBlockParser
-    from kb_api.rag_indexer.parser.documents.txt import TxtBlockParser
 
     assert MdBlockParser
     assert TxtBlockParser
 
 
 def test_parse_md_embedded_image_does_not_invoke_document_backend(tmp_path, monkeypatch):
-    import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
-    from PIL import Image
 
     class FailingMineruParser:
         ready = True
@@ -93,9 +95,6 @@ def test_parse_md_embedded_image_does_not_invoke_document_backend(tmp_path, monk
 
 
 def test_parse_pdf_routes_to_active_document_backend(tmp_path):
-    from kb_api.rag_indexer.parser.common.schema import TextBlock
-    from kb_api.rag_indexer.parser.service import ParserService
-    from kb_api.rag_indexer.parser.common.config import ParserConfig
 
     pdf_file = tmp_path / "test.pdf"
     _create_minimal_pdf(str(pdf_file), "PDF test")
@@ -119,8 +118,6 @@ def test_parse_pdf_routes_to_active_document_backend(tmp_path):
 
 @pytest.mark.parametrize("tier", ["flash", "basic", "standard", "advanced"])
 def test_pdf_parser_preserves_configured_tier(tier):
-    from kb_api.rag_indexer.parser.common.config import MineruApiServerConfig, ParserConfig
-    from kb_api.rag_indexer.parser.service import ParserService
 
     service = ParserService(ParserConfig(mineru=MineruApiServerConfig(tier=tier)))
 
@@ -128,7 +125,6 @@ def test_pdf_parser_preserves_configured_tier(tier):
 
 
 def test_parse_unsupported_file_type_raises_before_document_backend(tmp_path, monkeypatch):
-    import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
 
     class FailingMineruParser:
         ready = True

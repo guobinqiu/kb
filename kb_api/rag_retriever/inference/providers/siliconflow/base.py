@@ -6,7 +6,7 @@ import time
 import httpx
 
 from kb_api.rag_retriever.common.config import RetryConfig
-from kb_api.rag_retriever.common.tracing import get_trace_id
+from kb_api.api.telemetry import get_trace_id
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
 
 
@@ -26,9 +26,6 @@ class SiliconFlowModel:
     def close(self) -> None:
         self._client.close()
         self.ready = False
-
-    def stop(self) -> None:
-        self.close()
 
     def _log_call(self, operation: str, started: float, response: httpx.Response | None, error: UpstreamServiceError | None = None, **context) -> None:
         name = "dense" if operation == "embedding" else "rerank"

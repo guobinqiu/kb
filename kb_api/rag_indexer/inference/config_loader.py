@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from kb_api.rag_indexer.inference.common.config import RetryConfig
+from kb_api.rag_indexer.common.config import RetryConfig
 from kb_api.rag_indexer.inference.models import EmbeddingSpec
 
 
@@ -20,10 +20,8 @@ class SiliconFlowConfig:
     base_url: str
     api_key: str | None = field(repr=False)
     dense_model: str
-    rerank_model: str | None
     dimensions: int | None = None
     dense_timeout: int = 60
-    rerank_timeout: int | None = None
     retry: RetryConfig = field(default_factory=RetryConfig)
 
 
@@ -31,12 +29,10 @@ class SiliconFlowConfig:
 class TeiConfig:
     dense_url: str
     dense_model: str
-    rerank_url: str | None = None
-    rerank_model: str | None = None
     dimensions: int | None = None
     dense_timeout: float = 60.0
-    rerank_timeout: float | None = None
     retry: RetryConfig = field(default_factory=RetryConfig)
+    batch_size: int = 32
 
 
 @dataclass(frozen=True)
@@ -48,6 +44,7 @@ class DenseModelConfig:
     timeout: float
     api_key: str | None = field(default=None, repr=False)
     retry: RetryConfig = field(default_factory=RetryConfig)
+    batch_size: int = 32
 
 
 @dataclass(frozen=True)
@@ -67,28 +64,22 @@ def load_inference_config(config_file: str | Path | None = None) -> InferenceCon
     dense = _selected_dense(selected)
     embedding = _embedding_spec(selected, dense)
     if _provider_name(selected) == "siliconflow":
-        rerank = _select_enabled(selected.get("rerank"), "rerank", required=False)
         return InferenceConfig(siliconflow=SiliconFlowConfig(
             base_url=_required(selected, "base_url", "siliconflow"),
             api_key=os.environ[_siliconflow_api_key_env(selected["name"])],
             dense_model=dense["model_name"],
-            rerank_model=rerank["model_name"] if rerank else None,
             dimensions=dense.get("dimensions"),
             dense_timeout=int(dense.get("timeout", 60)),
-            rerank_timeout=int(rerank.get("timeout", 60)) if rerank else None,
             retry=_parse_retry_config(selected.get("retry")),
         ), dense_models=dense_models, embedding=embedding)
     if _provider_name(selected) == "tei":
-        rerank = _select_enabled(selected.get("rerank"), "rerank", required=False)
         return InferenceConfig(tei=TeiConfig(
             dense_url=_required(dense, "base_url", "dense"),
             dense_model=dense["model_name"],
-            rerank_url=_required(rerank, "base_url", "rerank") if rerank else None,
-            rerank_model=rerank["model_name"] if rerank else None,
             dimensions=dense.get("dimensions"),
             dense_timeout=float(dense.get("timeout", 60)),
-            rerank_timeout=float(rerank.get("timeout", 60)) if rerank else None,
             retry=_parse_retry_config(selected.get("retry")),
+            batch_size=int(dense.get("batch_size", 32)),
         ), dense_models=dense_models, embedding=embedding)
     raise ValueError(f"unsupported inference provider: {selected['name']}")
 
@@ -116,6 +107,7 @@ def _load_dense_models(raw: Any) -> tuple[DenseModelConfig, ...]:
                 timeout=float(dense.get("timeout", 60)),
                 api_key=api_key,
                 retry=retry,
+                batch_size=int(dense.get("batch_size", 32)),
             ))
     if not models:
         raise ValueError("dense must enable at least one component")

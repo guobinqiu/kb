@@ -4,28 +4,28 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
-from fastapi import HTTPException
 
 from kb_api.rag_indexer.clients.vector.embeddings import embed_documents
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 from kb_api.rag_indexer.core.index import errors, service
 from kb_api.rag_indexer.core.scope import app_collection
+from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
+from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
 
 
-@pytest.mark.parametrize("kind", ["upstream", "http", "request", "runtime"])
+@pytest.mark.parametrize("kind", ["upstream", "request", "runtime"])
 def test_index_stage_preserves_error_semantics(kind, caplog):
     message = "https://private/password=secret"
     error = {
         "upstream": UpstreamServiceError(service="parser", error=message, retryable=True, status_code=503),
-        "http": HTTPException(status_code=422, detail=message),
         "request": httpx.ConnectError(message),
         "runtime": RuntimeError(message),
     }[kind]
     with caplog.at_level("INFO", logger="rag_indexer"):
-        with pytest.raises((UpstreamServiceError, HTTPException)) as raised:
+        with pytest.raises(UpstreamServiceError) as raised:
             with errors.index_stage("parse", "parser"):
                 raise error
-    if kind in ("upstream", "http"):
+    if kind == "upstream":
         assert raised.value is error
     else:
         assert raised.value.__cause__ is error
@@ -50,9 +50,9 @@ def test_index_file_retains_stage_timing(caplog):
 
 
 def test_parse_error_precedes_missing_collection_scope():
-    error = HTTPException(status_code=422, detail="invalid file")
+    error = UpstreamServiceError(service="parser", error="invalid file", retryable=False, status_code=422)
     state = SimpleNamespace(parser_client=SimpleNamespace(parse_file=Mock(side_effect=error)))
-    with pytest.raises(HTTPException) as raised:
+    with pytest.raises(UpstreamServiceError) as raised:
         service.index_file(state, "file", "https://private", "a.txt")
     assert raised.value is error
 
@@ -101,8 +101,6 @@ def test_embedding_keeps_parallel_results(sparse):
 
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 def test_embedding_and_database_writes_return_chunk_count(backend):
-    from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
-    from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
     dense = SimpleNamespace(model="dense-model", embed_documents=Mock(return_value=[[0.1, 0.2]]))
     cls = MilvusVectorClient if backend == "milvus" else QdrantVectorClient
     vector = cls(dense=dense)

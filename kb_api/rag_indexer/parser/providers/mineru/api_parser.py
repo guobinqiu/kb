@@ -6,9 +6,9 @@ from urllib.parse import urljoin
 import httpx
 
 from kb_api.rag_indexer.parser.common.config import MineruApiServerConfig, RetryConfig
-from kb_api.rag_indexer.parser.common.retry import retry_call
+from kb_api.rag_indexer.common.retry import retry_call
 from kb_api.rag_indexer.parser.common.schema import Block
-from kb_api.rag_indexer.parser.common.upstream import UpstreamServiceError, upstream_error
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError, upstream_error
 from kb_api.rag_indexer.parser.common.validation import InvalidDocumentError
 from kb_api.rag_indexer.parser.providers.mineru.normalizer import structured_content_to_blocks
 
@@ -94,7 +94,7 @@ class MineruApiDocumentParser:
                 raise error from exc
 
         return retry_call(send, RetryConfig(self.config.retry.max_attempts, 0),
-                          operation_name="parser.mineru_api.request")
+                          operation_name="parser.mineru_api.request", enforce_deadline=False, logger_name="parser.retry")
 
     @staticmethod
     def _remaining(deadline: float) -> float:

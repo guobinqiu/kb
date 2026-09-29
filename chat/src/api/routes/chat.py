@@ -13,7 +13,12 @@ from langchain_core.messages import HumanMessage
 from pydantic import Field
 
 from chat.src.agent.registry import get_graph
-from chat.src.api.auth import get_current_credential, require_api_key
+from chat.src.api.auth import (
+    get_current_credential,
+    require_api_key,
+    reset_current_authorization,
+    set_current_authorization,
+)
 from chat.src.api.middleware import limiter
 from chat.src.api.requests import AgentRequest
 from chat.src.config import settings
@@ -70,8 +75,6 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
     }
 
     async def event_generator() -> AsyncIterator[str]:
-        from chat.src.api.auth import set_current_authorization
-
         token = set_current_authorization(request.headers.get("Authorization"))
         try:
             async for mode, payload in graph.astream(
@@ -96,8 +99,6 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
                 "traceId": get_trace_id(),
             })
         finally:
-            from chat.src.api.auth import reset_current_authorization
-
             reset_current_authorization(token)
 
     return StreamingResponse(

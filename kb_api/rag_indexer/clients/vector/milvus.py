@@ -7,6 +7,14 @@ import threading
 import uuid
 from pathlib import Path
 
+import pymilvus
+from pymilvus import DataType
+
+try:
+    import grpc
+except ImportError:
+    grpc = None
+
 from kb_api.rag_indexer.common.config import RetryConfig
 from kb_api.rag_indexer.common.contracts import Dense, Sparse
 from kb_api.rag_indexer.common.deadline import check_deadline, request_timeout
@@ -266,9 +274,7 @@ class MilvusVectorClient:
 
     def _client(self):
         if self.client is None:
-            from pymilvus import MilvusClient
-
-            self.client = MilvusClient(uri=_connection_uri(self.uri), timeout=request_timeout(self._timeout_value(self.query_timeout)), token=self.token, dedicated=True, grpc_options={"grpc.enable_retries": 0})
+            self.client = pymilvus.MilvusClient(uri=_connection_uri(self.uri), timeout=request_timeout(self._timeout_value(self.query_timeout)), token=self.token, dedicated=True, grpc_options={"grpc.enable_retries": 0})
         return self.client
 
     def _request_options(self, timeout: int | None) -> dict:
@@ -297,9 +303,7 @@ class MilvusVectorClient:
             raise RuntimeError("search is not initialized")
 
     def _collection_schema(self):
-        from pymilvus import DataType, MilvusClient
-
-        schema = MilvusClient.create_schema(auto_id=False, enable_dynamic_field=True)
+        schema = pymilvus.MilvusClient.create_schema(auto_id=False, enable_dynamic_field=True)
         schema.add_field(field_name="pk", datatype=DataType.VARCHAR, is_primary=True, max_length=64)
         schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535, **self._text_field_kwargs())
         schema.add_field(field_name="file_id", datatype=DataType.VARCHAR, max_length=128)
@@ -316,9 +320,7 @@ class MilvusVectorClient:
         return {}
 
     def _collection_index_params(self):
-        from pymilvus import MilvusClient
-
-        index_params = MilvusClient.prepare_index_params()
+        index_params = pymilvus.MilvusClient.prepare_index_params()
         for field_name, params in self._index_specs():
             index_params.add_index(field_name=field_name, **params)
         return index_params
@@ -594,10 +596,6 @@ def _metadata_from_row(row: dict) -> dict:
 def _retryable_vector_error(exc: Exception) -> bool:
     if isinstance(exc, UpstreamServiceError):
         return exc.retryable
-    try:
-        import grpc
-    except ImportError:
-        grpc = None
     if grpc is not None and isinstance(exc, grpc.RpcError):
         return exc.code() in {
             grpc.StatusCode.DEADLINE_EXCEEDED,

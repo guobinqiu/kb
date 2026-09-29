@@ -4,11 +4,12 @@ import zipfile
 
 import httpx
 import pytest
+from kb_api.rag_indexer.parser.providers.mineru.cloud_parser import MineruCloudDocumentParser
+from kb_api.rag_indexer.parser.common.config import MineruCloudParserConfig
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 
 
 def test_cloud_parses_single_url_without_uploading_file():
-    from kb_api.rag_indexer.parser.providers.mineru.cloud_parser import MineruCloudDocumentParser
-    from kb_api.rag_indexer.parser.common.config import MineruCloudParserConfig
 
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as output:
@@ -48,9 +49,6 @@ def test_cloud_parses_single_url_without_uploading_file():
     {"code": 0, "data": {"state": "failed", "err_msg": "unsupported file"}},
 ])
 def test_cloud_preserves_provider_error(response):
-    from kb_api.rag_indexer.parser.providers.mineru.cloud_parser import MineruCloudDocumentParser
-    from kb_api.rag_indexer.parser.common.config import MineruCloudParserConfig
-    from kb_api.rag_indexer.parser.common.upstream import UpstreamServiceError
 
     def handle(request):
         if request.method == "POST":

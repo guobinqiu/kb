@@ -5,9 +5,9 @@ import time
 
 import httpx
 
-from kb_api.rag_indexer.inference.common.config import RetryConfig
-from kb_api.rag_indexer.inference.common.tracing import get_trace_id
-from kb_api.rag_indexer.inference.common.upstream import UpstreamServiceError
+from kb_api.rag_indexer.common.config import RetryConfig
+from kb_api.rag_indexer.common.upstream import get_trace_id
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 
 
 logger = logging.getLogger("kb_api.rag_indexer.inference.providers.tei")

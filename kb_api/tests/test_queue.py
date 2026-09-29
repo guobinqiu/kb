@@ -1,11 +1,10 @@
 import json
 from datetime import datetime
-from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from kb_api.queue import RabbitMQClient
+from kb_api.api.services.rabbitmq import RabbitMQClient
 from kb_api.tests.helpers import upload_file
 
 
@@ -20,7 +19,6 @@ def _upload(system):
 
 
 def test_index_result_api_applies_success(system):
-    assert system["queue"].started_queue is None
     record = _upload(system)
     response = system["client"].post(
         "/api/v1/index-results",
@@ -28,7 +26,7 @@ def test_index_result_api_applies_success(system):
         headers=system["headers"],
     )
     assert response.status_code == 204, response.text
-    stored = system["repository"].get_file(record["id"])
+    stored = system["dao"].get_file(record["id"])
     assert stored["status"] == "indexed"
     assert stored["error"] is None
     assert datetime.fromisoformat(stored["indexed_at"]) == datetime.fromisoformat("2026-09-22T12:00:00+00:00")
@@ -43,7 +41,7 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
         headers=system["headers"],
     )
     assert response.status_code == 204, response.text
-    failed = system["repository"].get_file(record["id"])
+    failed = system["dao"].get_file(record["id"])
     assert failed["status"] == "failed"
     assert failed["error"] == error
     assert failed["indexed_at"] is None
@@ -55,9 +53,9 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
         headers=system["headers"],
     )
     assert response.status_code == 204, response.text
-    deleted = system["repository"].get_file(record["id"], include_deleted=True)
+    deleted = system["dao"].get_file(record["id"], include_deleted=True)
     assert deleted["deleted_at"] is not None
-    assert record["object_key"] in system["storage"].deleted
+    assert record["s3_url"] in system["storage"].deleted
 
 
 def test_publish_declares_durable_queue_and_sends_persistent_json(monkeypatch):
@@ -105,40 +103,3 @@ def test_publish_propagates_broker_failure_and_exits_connection(monkeypatch, ope
     assert exit_traceback is not None
     if operation == "queue_declare":
         channel.basic_publish.assert_not_called()
-
-
-@pytest.mark.parametrize("body,callback_fails", [
-    (b'{"file_id":"file-1"}', False),
-    (b'{"file_id":"file-1"}', True),
-    (b"invalid json", False),
-    (b"[]", False),
-])
-def test_consumer_uses_manual_ack_and_rejects_failed_messages(monkeypatch, body, callback_fails):
-    channel = Mock()
-    connection = SimpleNamespace(channel=lambda: channel)
-    broker = RabbitMQClient("amqp://unused")
-    monkeypatch.setattr(broker, "_new_connection", lambda: connection)
-    monkeypatch.setattr("kb_api.queue.threading.Thread", lambda target, **kwargs: SimpleNamespace(start=target))
-    callback = Mock(side_effect=RuntimeError("callback unavailable") if callback_fails else None)
-
-    broker.start_consumer("results", callback)
-
-    channel.queue_declare.assert_called_once_with(queue="results", durable=True)
-    channel.basic_qos.assert_called_once_with(prefetch_count=1)
-    channel.start_consuming.assert_called_once_with()
-    channel.basic_consume.assert_called_once()
-    subscription = channel.basic_consume.call_args.kwargs
-    assert subscription["queue"] == "results"
-    assert subscription["auto_ack"] is False
-    subscription["on_message_callback"](channel, SimpleNamespace(delivery_tag=7), None, body)
-
-    if body.startswith(b"{"):
-        callback.assert_called_once_with({"file_id": "file-1"})
-    else:
-        callback.assert_not_called()
-    if body.startswith(b"{") and not callback_fails:
-        channel.basic_ack.assert_called_once_with(delivery_tag=7)
-        channel.basic_nack.assert_not_called()
-    else:
-        channel.basic_nack.assert_called_once_with(delivery_tag=7, requeue=False)
-        channel.basic_ack.assert_not_called()

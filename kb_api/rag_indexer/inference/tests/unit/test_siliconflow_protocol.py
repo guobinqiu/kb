@@ -3,39 +3,38 @@ import json
 import httpx
 import pytest
 
-from kb_api.rag_indexer.inference.common.config import RetryConfig
-from kb_api.rag_indexer.inference.common.upstream import UpstreamServiceError, upstream_error
-from kb_api.rag_indexer import request_context as request_ids
+from kb_api.rag_indexer.common.config import RetryConfig
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError, upstream_error
+from kb_api.rag_indexer.common import upstream as task_ids
+from kb_api.rag_indexer.inference.service import InferenceComponents
+from kb_api.rag_indexer.inference.providers.siliconflow import SiliconFlowDenseClient
 
 
 @pytest.fixture
-def request_context():
+def task_context():
     request_id = "a" * 32
-    token = request_ids._request_trace_id.set(request_id)
+    token = task_ids._task_trace_id.set(request_id)
     try:
         yield request_id
     finally:
-        request_ids._request_trace_id.reset(token)
+        task_ids._task_trace_id.reset(token)
 
 
 @pytest.fixture
 def make_client():
-    from kb_api.rag_indexer.inference.providers.siliconflow import SiliconFlowInferenceClient
 
     clients = []
 
     def make(handler, **kwargs):
-        client = SiliconFlowInferenceClient(
+        client = InferenceComponents(SiliconFlowDenseClient(
             base_url="https://api.siliconflow.cn/v1",
             api_key="test-external-key",
-            dense_model="BAAI/bge-m3",
-            rerank_model="BAAI/bge-reranker-v2-m3",
-            dense_timeout=12.0,
-            rerank_timeout=7.0,
+            model="BAAI/bge-m3",
+            timeout=12.0,
             http_client=httpx.Client(transport=httpx.MockTransport(handler)),
             retry=kwargs.pop("retry", RetryConfig(max_attempts=1)),
             **kwargs,
-        )
+        ))
         clients.append(client)
         return client
 
@@ -81,16 +80,6 @@ def test_dimensions_are_sent_for_documents_and_queries(make_client):
     assert inputs == [["document"], "query"]
 
 
-def test_siliconflow_clients_are_exported_from_provider_modules():
-    from kb_api.rag_indexer.inference.providers.siliconflow.client import SiliconFlowInferenceClient
-    from kb_api.rag_indexer.inference.providers.siliconflow.dense import SiliconFlowDenseClient
-    from kb_api.rag_indexer.inference.providers.siliconflow.rerank import SiliconFlowRerankClient
-
-    assert SiliconFlowInferenceClient.__name__ == "SiliconFlowInferenceClient"
-    assert SiliconFlowDenseClient.__name__ == "SiliconFlowDenseClient"
-    assert SiliconFlowRerankClient.__name__ == "SiliconFlowRerankClient"
-
-
 def test_dense_http_error_logs_model_status_without_response_body(make_client, caplog):
     def handler(request):
         return httpx.Response(
@@ -117,31 +106,9 @@ def test_dense_http_error_logs_model_status_without_response_body(make_client, c
     assert not hasattr(record, "input")
 
 
-def test_rerank_top_n_and_original_items(make_client):
-    items = [{"content": "a", "id": "a"}, {"content": "b", "metadata": {"page": 2}}]
-
-    def handler(request):
-        assert str(request.url) == "https://api.siliconflow.cn/v1/rerank"
-        assert request.headers["authorization"] == "Bearer test-external-key"
-        assert json.loads(request.content) == {
-            "model": "BAAI/bge-reranker-v2-m3", "query": "q", "documents": ["a", "b"],
-            "top_n": 1, "return_documents": False,
-        }
-        return httpx.Response(200, json={"results": [
-            {"index": 1, "relevance_score": 0.9},
-        ]})
-
-    client = make_client(handler)
-    assert client.rerank.rerank("q", items, 1) == [
-        {"content": "b", "metadata": {"page": 2}, "_score": 0.9},
-    ]
-    assert "_score" not in items[1]
-
-
-@pytest.mark.parametrize("operation", ["dense", "rerank"])
 @pytest.mark.parametrize("failure", [401, 403, 429, "timeout"])
-@pytest.mark.usefixtures("request_context")
-def test_errors_use_shared_normalization(make_client, operation, failure):
+@pytest.mark.usefixtures("task_context")
+def test_errors_use_shared_normalization(make_client, failure):
     source = []
 
     def handler(request):
@@ -155,10 +122,7 @@ def test_errors_use_shared_normalization(make_client, operation, failure):
 
     client = make_client(handler)
     with pytest.raises(UpstreamServiceError) as caught:
-        if operation == "dense":
-            client.dense.embed_query("q")
-        else:
-            client.rerank.rerank("q", [{"content": "a"}], 1)
+        client.dense.embed_query("q")
     expected = upstream_error("inference", source[0], retryable=False)
     assert caught.value.detail() == expected.detail()
     assert caught.value.status_code == expected.status_code
@@ -176,16 +140,14 @@ def test_local_readiness_and_close(make_client):
     assert client.ping() and client.ping()
     client.close()
     assert not client.ping()
-    assert not client.dense.ready and not client.rerank.ready
+    assert not client.dense.ready
     assert client.dense._client.is_closed
-    assert client.rerank._client.is_closed
     assert requests == []
 
 
-@pytest.mark.parametrize("operation", ["dense", "rerank"])
 @pytest.mark.parametrize("body", [b"private-document", b"null", b"[]", b"{}"])
-def test_invalid_json_envelope(make_client, operation, body):
-    _assert_invalid_response(make_client, operation, body)
+def test_invalid_json_envelope(make_client, body):
+    _assert_invalid_response(make_client, body)
 
 
 @pytest.mark.parametrize("data", [
@@ -200,35 +162,16 @@ def test_invalid_json_envelope(make_client, operation, body):
     [{"index": 0, "embedding": [0.1]}, {"index": 0, "embedding": [0.2]}],
 ])
 def test_invalid_dense_schema(make_client, data):
-    _assert_invalid_response(make_client, "dense", json.dumps({"data": data}).encode())
-
-
-@pytest.mark.parametrize("results", [
-    None, {}, [None], [{}],
-    [{"index": -1, "relevance_score": 0.1}],
-    [{"index": 1, "relevance_score": 0.1}],
-    [{"index": True, "relevance_score": 0.1}],
-    [{"index": 0.5, "relevance_score": 0.1}],
-    [{"index": "0", "relevance_score": 0.1}],
-    [{"index": 0, "relevance_score": None}],
-    [{"index": 0, "relevance_score": "private-document"}],
-    [{"index": 0, "relevance_score": True}],
-    [{"index": 0, "relevance_score": 0.1}] * 2,
-])
-def test_invalid_rerank_schema(make_client, results):
-    _assert_invalid_response(make_client, "rerank", json.dumps({"results": results}).encode())
+    _assert_invalid_response(make_client, json.dumps({"data": data}).encode())
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
-@pytest.mark.parametrize("operation", ["dense", "rerank"])
-def test_non_finite_model_numbers(make_client, operation, value):
-    payload = {"data": [{"index": 0, "embedding": [value]}]} if operation == "dense" else {
-        "results": [{"index": 0, "relevance_score": value}],
-    }
-    _assert_invalid_response(make_client, operation, json.dumps(payload).encode())
+def test_non_finite_model_numbers(make_client, value):
+    payload = {"data": [{"index": 0, "embedding": [value]}]}
+    _assert_invalid_response(make_client, json.dumps(payload).encode())
 
 
-def _assert_invalid_response(make_client, operation, body):
+def _assert_invalid_response(make_client, body):
     calls = []
 
     def handler(request):
@@ -237,10 +180,7 @@ def _assert_invalid_response(make_client, operation, body):
 
     client = make_client(handler)
     with pytest.raises(UpstreamServiceError) as caught:
-        if operation == "dense":
-            client.dense.embed_query("private-document")
-        else:
-            client.rerank.rerank("private-document", [{"content": "private-document"}], 1)
+        client.dense.embed_query("private-document")
     assert caught.value.service == "inference"
     assert caught.value.status_code == 502
     assert caught.value.retryable is False
@@ -264,10 +204,9 @@ def test_incomplete_or_inconsistent_embeddings(make_client, rows, dimensions):
     assert caught.value.retryable is False
 
 
-@pytest.mark.parametrize("operation", ["dense", "rerank"])
 @pytest.mark.parametrize("outcome", ["success", "invalid", "structured_error", "structured_redirect", 402, "timeout"])
 @pytest.mark.parametrize("request_id", [None, "provider-real-id"])
-def test_external_call_logs_safe_context(make_client, caplog, operation, outcome, request_id, request_context):
+def test_external_call_logs_safe_context(make_client, caplog, outcome, request_id, task_context):
     calls = []
 
     def handler(request):
@@ -275,9 +214,7 @@ def test_external_call_logs_safe_context(make_client, caplog, operation, outcome
         if outcome == "timeout":
             raise httpx.ReadTimeout("private-document private-key", request=request)
         headers = {"x-request-id": request_id} if request_id is not None else {}
-        body = {"data": [{"index": 0, "embedding": [0.1]}]} if operation == "dense" else {
-            "results": [{"index": 0, "relevance_score": 0.1}],
-        }
+        body = {"data": [{"index": 0, "embedding": [0.1]}]}
         if outcome in ("structured_error", "structured_redirect"):
             return httpx.Response(302 if outcome == "structured_redirect" else 402, headers=headers, json={
                 "service": "inference", "code": "private-key", "message": "private-document", "retryable": False,
@@ -288,9 +225,7 @@ def test_external_call_logs_safe_context(make_client, caplog, operation, outcome
     client = make_client(handler)
     with caplog.at_level("INFO", logger="kb_api.rag_indexer.inference.providers.siliconflow"):
         def invoke():
-            if operation == "dense":
-                return client.dense.embed_query("private-document")
-            return client.rerank.rerank("private-document", [{"content": "private-document"}], 1)
+            return client.dense.embed_query("private-document")
 
         if outcome == "success":
             assert invoke()
@@ -300,7 +235,7 @@ def test_external_call_logs_safe_context(make_client, caplog, operation, outcome
     records = [row for row in caplog.records if row.name == "kb_api.rag_indexer.inference.providers.siliconflow"]
     assert len(records) == 1 and len(calls) == 1
     record = records[0]
-    assert record.trace_id == request_context
+    assert record.trace_id == task_context
     assert record.elapsed_ms >= 0
     expected_status = {"timeout": None, "structured_error": 402, "structured_redirect": 302}.get(outcome, 402 if outcome == 402 else 200)
     assert record.status_code == expected_status
@@ -310,8 +245,6 @@ def test_external_call_logs_safe_context(make_client, caplog, operation, outcome
     assert not hasattr(record, "api_key")
 
 
-@pytest.mark.parametrize("operation", ["dense", "rerank"])
-def test_incomplete_response_with_valid_rows_is_rejected(make_client, operation):
-    body = {"status": "incomplete", "data": [{"index": 0, "embedding": [0.1]}],
-            "results": [{"index": 0, "relevance_score": 0.1}]}
-    _assert_invalid_response(make_client, operation, json.dumps(body).encode())
+def test_incomplete_response_with_valid_rows_is_rejected(make_client):
+    body = {"status": "incomplete", "data": [{"index": 0, "embedding": [0.1]}]}
+    _assert_invalid_response(make_client, json.dumps(body).encode())

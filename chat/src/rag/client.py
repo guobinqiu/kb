@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from chat.src.config import settings
 from chat.src.infra.retry import rag_retry
 from chat.src.rag.schemas import Document, SearchRequest
 
@@ -201,9 +202,6 @@ _client: RagClient | None = None
 
 def _build_client_from_settings() -> RagClient:
     """从 settings 构造 RagClient 单例。"""
-    # 延迟导入 config 避免循环
-    from chat.src.config import settings
-
     return RagClient(
         base_url=settings.rag_base_url,
         timeout=settings.rag_timeout,

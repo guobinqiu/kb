@@ -3,14 +3,17 @@ from threading import Barrier
 from contextlib import nullcontext
 import pytest
 
+import kb_api.rag_retriever.core.search as search_mod
+from kb_api.rag_retriever.common.upstream import UpstreamServiceError
+from kb_api.rag_retriever.core.scope import app_collection, current_collection
+from kb_api.rag_retriever.core.search import SearchPlan, _SearchExecutor
+from kb_api.rag_retriever.schemas import SearchRequest
+
 
 pytestmark = pytest.mark.unit
 
 
 def test_dense_search_uses_top_k_without_rerank_fetch_limit():
-    from kb_api.rag_retriever.core.search import SearchPlan, _SearchExecutor
-    from kb_api.rag_retriever.schemas import SearchRequest
-
     request = SearchRequest(
         query="query",
         app_id="imsdom",
@@ -87,38 +90,28 @@ class FakeRerank:
 
 
 def test_search_plan_uses_file_ids():
-    import kb_api.rag_retriever.core.search as search_mod
-
     plan = search_mod.SearchPlan("query", file_ids=["file_a", "file_b"])
 
     assert plan.file_ids == ["file_a", "file_b"]
 
 
 def test_search_plan_uses_workspace_ids():
-    import kb_api.rag_retriever.core.search as search_mod
-
     plan = search_mod.SearchPlan("query", workspace_ids=["workspace_a", "workspace_b"])
 
     assert plan.workspace_ids == ["workspace_a", "workspace_b"]
 
 
 def test_search_plan_rejects_empty_file_ids():
-    import kb_api.rag_retriever.core.search as search_mod
-
     with pytest.raises(ValueError, match="file_ids cannot be empty"):
         search_mod.SearchPlan("query", file_ids=[])
 
 
 def test_search_plan_limits_file_ids_to_1000():
-    import kb_api.rag_retriever.core.search as search_mod
-
     with pytest.raises(ValueError, match="file_ids exceeds max limit: 1000"):
         search_mod.SearchPlan("query", file_ids=[f"f{i}" for i in range(1001)])
 
 
 def test_executor_searches_single_chunks_collection_with_file_filter():
-    import kb_api.rag_retriever.core.search as search_mod
-
     vector = FakeVector()
     results = search_mod._SearchExecutor(
         search_mod.SearchPlan("query", top_k=5, file_ids=["file_a"]),
@@ -131,8 +124,6 @@ def test_executor_searches_single_chunks_collection_with_file_filter():
 
 
 def test_executor_exposes_retrieval_score():
-    import kb_api.rag_retriever.core.search as search_mod
-
     results = search_mod._SearchExecutor(
         search_mod.SearchPlan("query", top_k=1),
         vector=FakeVector(),
@@ -143,8 +134,6 @@ def test_executor_exposes_retrieval_score():
 
 
 def test_executor_runs_search_stages_in_order(monkeypatch):
-    from kb_api.rag_retriever.core.search import SearchPlan, _SearchExecutor
-
     executor = _SearchExecutor(SearchPlan("query"), vector=FakeVector())
     calls = []
     context = {"retrieve_limit": 5, "metadata_filter": None}
@@ -177,8 +166,6 @@ def test_executor_runs_search_stages_in_order(monkeypatch):
 
 
 def test_dense_search_splits_query_embedding_and_vector_query():
-    import kb_api.rag_retriever.core.search as search_mod
-
     vector = FakeTracedVector()
     executor = search_mod._SearchExecutor(
         search_mod.SearchPlan("query", top_k=2),
@@ -195,8 +182,6 @@ def test_dense_search_splits_query_embedding_and_vector_query():
 
 
 def test_executor_uses_sparse_search_mode():
-    import kb_api.rag_retriever.core.search as search_mod
-
     vector = FakeSparseVector()
     executor = search_mod._SearchExecutor(
         search_mod.SearchPlan("query", top_k=2, mode="sparse"),
@@ -208,8 +193,6 @@ def test_executor_uses_sparse_search_mode():
 
 
 def test_executor_hybrid_merges_dense_and_sparse_results():
-    import kb_api.rag_retriever.core.search as search_mod
-
     class Vector(FakeSparseVector):
         def query_dense_vector(self, query_vector, limit, metadata_filter):
             self.calls.append(("query_dense_vector", query_vector, limit, metadata_filter))
@@ -233,8 +216,6 @@ def test_executor_hybrid_merges_dense_and_sparse_results():
 
 
 def test_executor_hybrid_runs_dense_and_sparse_in_parallel():
-    import kb_api.rag_retriever.core.search as search_mod
-
     concurrent_queries = Barrier(2, timeout=5)
 
     class Vector(FakeSparseVector):
@@ -255,9 +236,6 @@ def test_executor_hybrid_runs_dense_and_sparse_in_parallel():
 
 
 def test_executor_hybrid_preserves_app_collection_scope_in_parallel_threads():
-    import kb_api.rag_retriever.core.search as search_mod
-    from kb_api.rag_retriever.core.scope import app_collection, current_collection
-
     class Vector(FakeSparseVector):
         def query_dense_vector(self, query_vector, limit, metadata_filter):
             return [{"id": "dense", "content": current_collection(), "metadata": {}, "_score": 0.8}]
@@ -275,9 +253,6 @@ def test_executor_hybrid_preserves_app_collection_scope_in_parallel_threads():
 
 
 def test_executor_hybrid_falls_back_to_dense_when_sparse_upstream_fails():
-    import kb_api.rag_retriever.core.search as search_mod
-    from kb_api.rag_retriever.common.upstream import UpstreamServiceError
-
     class Vector(FakeSparseVector):
         def query_dense_vector(self, query_vector, limit, metadata_filter):
             return [{"id": "dense", "content": "dense", "metadata": {}, "_score": 0.8}]
@@ -299,8 +274,6 @@ def test_executor_hybrid_falls_back_to_dense_when_sparse_upstream_fails():
 
 
 def test_executor_reranks_dense_candidates_when_rerank_client_is_configured():
-    import kb_api.rag_retriever.core.search as search_mod
-
     class Vector(FakeVector):
         def search_dense(self, query, limit, metadata_filter):
             self.calls.append(("search_dense", query, limit, metadata_filter))
@@ -324,8 +297,6 @@ def test_executor_reranks_dense_candidates_when_rerank_client_is_configured():
 
 
 def test_executor_skips_rerank_when_no_candidates():
-    import kb_api.rag_retriever.core.search as search_mod
-
     class Vector(FakeVector):
         def search_dense(self, query, limit, metadata_filter):
             return []
@@ -342,9 +313,6 @@ def test_executor_skips_rerank_when_no_candidates():
 
 
 def test_executor_returns_retrieved_items_when_rerank_fails(caplog):
-    import kb_api.rag_retriever.core.search as search_mod
-    from kb_api.rag_retriever.common.upstream import UpstreamServiceError
-
     class Vector(FakeVector):
         def search_dense(self, query, limit, metadata_filter):
             return [

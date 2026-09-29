@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
-from kb_api.rag_retriever.common.contracts import ErrorResponse
-from kb_api.rag_retriever.common.tracing import get_trace_id
+from kb_api.api.telemetry import get_trace_id
+
+
+class ErrorResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    error: str | None
+    service: str | None = None
+    retryable: StrictBool
+    traceId: str = Field(pattern=r"^[0-9a-f]{32}$")
 
 
 class UpstreamServiceError(RuntimeError):
@@ -49,14 +58,5 @@ def upstream_error(service: str, exc: Exception, *, retryable: bool = False) -> 
     return UpstreamServiceError(service=service, error=str(exc) or None, retryable=False, status_code=502)
 
 
-def internal_error(service: str, exc: Exception) -> UpstreamServiceError:
-    if not isinstance(exc, httpx.HTTPStatusError):
-        return upstream_error(service, exc)
-    try:
-        detail = ErrorResponse.model_validate_json(exc.response.content)
-    except ValueError:
-        return UpstreamServiceError(service=service, error=exc.response.text, retryable=False, status_code=502)
-    return UpstreamServiceError(
-        service=detail.service or service, error=detail.error, retryable=detail.retryable,
-        status_code=exc.response.status_code, trace_id=detail.traceId,
-    )
+def retryable_response(response: httpx.Response | None) -> bool:
+    return response is None or 500 <= response.status_code < 600

@@ -38,30 +38,7 @@ def test_siliconflow_variants_share_provider(tmp_path, monkeypatch, provider, ba
     assert config.siliconflow.base_url == base_url
     assert config.siliconflow.api_key == api_key
     assert config.siliconflow.dense_model == "Qwen/Qwen3-Embedding-0.6B"
-    assert config.siliconflow.rerank_model == "Qwen/Qwen3-Reranker-0.6B"
     assert config.tei is None
-
-
-@pytest.mark.parametrize("enabled", [True, False])
-def test_siliconflow_rerank_enable_controls_loaded_client(tmp_path, monkeypatch, enabled):
-    from kb_api.rag_indexer.inference.service import load_inference_components
-
-    monkeypatch.setenv("SILICONFLOW_CN_API_KEY", "test-key")
-    path = tmp_path / "inference.yaml"
-    path.write_text(yaml.safe_dump({"inference": {"siliconflow-cn": {
-        "enable": True,
-        "base_url": "https://api.siliconflow.cn/v1",
-        "dense": {"dense": {"enable": True, "model_name": "dense"}},
-        "rerank": {"rerank": {"enable": enabled, "model_name": "rerank"}},
-    }}}), encoding="utf-8")
-    config = load_inference_config(path)
-    client = load_inference_components(config)
-    try:
-        assert client.dense.model == "dense"
-        assert (client.rerank is not None) is enabled
-        assert client.sparse is None
-    finally:
-        client.close()
 
 
 def test_load_inference_config_uses_rag_config_file(tmp_path, monkeypatch):

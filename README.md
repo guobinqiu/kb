@@ -6,12 +6,18 @@
 
 需要 Docker Compose v2、Just 和 Node.js 20.19+；当前前端可使用 Node.js 22 构建。
 
+233 的完整安装步骤见 [233 安装指南](docs/install-233.md)，包含模型服务、环境变量、数据库初始化和运行验证。
+
 ```bash
 cp deploy/env.example deploy/.env
+# 先编辑 deploy/.env，并核对解析、推理和对话服务配置
 just infra up
+until docker exec postgres pg_isready -U rag -d rag; do sleep 2; done
+docker exec -i postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
 just kb up
 just indexer up
 just chat up
+npm --prefix webui ci
 just webui up
 ```
 
@@ -19,7 +25,7 @@ just webui up
 
 各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`，服务间使用 Compose 服务名通信。`deploy/infra.yaml` 默认启动 PostgreSQL、Qdrant、RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Milvus 与 etcd 保留在 `milvus` profile 中，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
 
-KB API 负责登录、应用、组织树、用户、工作区、文件、检索授权和索引任务状态；RAG Indexer 从 RabbitMQ 消费任务，内含 Parser 与文档向量模块。公开搜索请求先进入 KB API，由 KB API 校验工作区授权，再调用 RAG 检索。RAG Indexer 和 Chat 均使用一个 Uvicorn worker；增加 RAG Indexer worker 会重复占用模型内存和显存。
+KB API 负责登录、应用、组织树、用户、工作区、文件、检索授权和索引任务状态；RAG Indexer 是纯 MQ 消费进程，从 RabbitMQ 消费索引与删除任务，通过 HTTP 向 KB API 回写结果，内含 Parser 与文档向量模块，不监听 HTTP 端口。公开搜索请求先进入 KB API，由 KB API 校验工作区授权，再调用 RAG 检索。Chat 使用一个 Uvicorn worker。
 
 ## 命令
 
@@ -64,12 +70,14 @@ docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile
 
 MinerU Compose 沿用官方方式在本地构建好的 `mineru:4` 镜像，不从官方 registry 拉取该标签；运行前需确保本机已有该镜像。
 
-应用镜像使用本地名称 `kb-<服务名>:${IMAGE_TAG}`。KB API 使用 `kb_api/Dockerfile`，RAG Indexer 使用 `kb_api/rag_indexer/Dockerfile`。两者各自维护 `pyproject.toml`、`uv.lock` 和依赖环境，共用 `kb_api/config/rag.yaml`，分别通过 `kb_api.main:app` 和 `kb_api.rag_indexer.app.main:app` 启动。
+应用镜像使用本地名称 `kb-<服务名>:${IMAGE_TAG}`。KB API 使用 `kb_api/Dockerfile`，RAG Indexer 使用 `kb_api/rag_indexer/Dockerfile`。两者各自维护 `pyproject.toml`、`uv.lock` 和依赖环境，共用 `kb_api/config/rag.yaml`。KB API 通过 Uvicorn 的 `kb_api.api.main:app` 启动，Indexer 通过 `python -m kb_api.rag_indexer.app.main` 启动。
 `USE_CN_MIRROR` 作为构建参数传给 Docker。Indexer 通过 HTTP 调用 MinerU，不安装 MinerU Python 包。
 
 两个服务均挂载 `kb_api/config`，不挂载整个源码目录。Indexer 的解析和向量推理通过远程服务执行，不挂载本地模型目录。修改代码、依赖或配置后执行 `just kb up` 或 `just indexer up`，重新构建并强制重新创建对应服务容器；修改共用配置后更新两个服务。
 
 内网部署 Indexer 只需 Indexer 镜像、配置及运行环境变量，并能访问所配置的解析与推理服务，不需要 KB API 管理端源码或本地模型目录。源码目录只在构建镜像时使用。
+
+网关 `/health` 转发到 KB API 的 `GET /health`；旧 `/ready` 和 Indexer HTTP 路由已移除。Indexer 容器健康检查仅检查 PID 1 存活，不表示 MQ 消费者就绪；消费情况通过 RabbitMQ 的消费者数量、队列积压和 Indexer 日志观察。
 
 ## 追踪运行
 
@@ -184,7 +192,7 @@ Authorization: Bearer <user_token>
 
 文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用完成接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，完成接口会复用该 ID。浏览器访问的 MinIO 地址由 `KB_MINIO_PUBLIC_URL` 配置，需能从访问 WebUI 的浏览器连通。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
 
-KB API 将索引和删除任务发布到 `kb.index.tasks`，RAG Indexer 通过回写接口更新结果。一个 App 可有多个 workspace；`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。操作和角色映射固定在代码，不建权限表。文件只归属 workspace，不归属 org；同一 App 的工作区共用向量 collection，分片保存 `workspace_id`、`file_id` 和 `chunk_index`。搜索可传多个 `workspace_ids` 和 `file_ids`，KB API 会校验工作区授权。详见[工作区授权概要设计](docs/workspace-authorization.md)。
+KB API 将索引和删除任务发布到 `kb.index.tasks`，RAG Indexer 通过 HTTP 回写接口更新结果。一个 App 可有多个 workspace；`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。操作和角色映射固定在代码，不建权限表。文件只归属 workspace，不归属 org；同一 App 的工作区共用向量 collection，分片保存 `workspace_id`、`file_id` 和 `chunk_index`。搜索可传多个 `workspace_ids` 和 `file_ids`，KB API 会校验工作区授权。详见[工作区授权概要设计](docs/workspace-authorization.md)。
 
 公共请求头：
 

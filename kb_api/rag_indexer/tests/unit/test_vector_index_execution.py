@@ -7,6 +7,21 @@ from kb_api.rag_indexer.clients.vector import milvus, qdrant
 from kb_api.rag_indexer.core.scope import app_collection
 from kb_api.rag_indexer.common import deadline
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
+from contextvars import ContextVar
+from threading import Barrier
+from kb_api.rag_indexer.core.scope import current_collection
+from kb_api.rag_indexer.common.config import RetryConfig
+from pymilvus.decorators import retry_on_rpc_failure
+from pymilvus.exceptions import ErrorCode, MilvusException
+import grpc
+from pymilvus.decorators import retry_on_schema_mismatch
+from pymilvus.exceptions import DataNotMatchException
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+import httpx
+from qdrant_client.common.client_exceptions import ResourceExhaustedResponse
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 
 pytestmark = pytest.mark.unit
@@ -39,9 +54,6 @@ def make_vector(backend, events, after):
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 @pytest.mark.parametrize("failure", [None, "dense", "sparse"])
 def test_index_embeddings_run_concurrently_with_request_context(backend, failure):
-    from contextvars import ContextVar
-    from threading import Barrier
-    from kb_api.rag_indexer.core.scope import current_collection
 
     rendezvous = Barrier(2, timeout=2)
     trace = ContextVar("test_trace")
@@ -125,7 +137,6 @@ def test_index_propagates_original_failure_without_retry(backend, stages):
 
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 def test_vector_write_retries_after_embeddings_without_reembedding(monkeypatch, backend):
-    from kb_api.rag_indexer.common.config import RetryConfig
 
     monkeypatch.setattr("kb_api.rag_indexer.common.retry.time.sleep", lambda seconds: None)
     events = []
@@ -200,7 +211,6 @@ def test_ensure_app_collection_is_attempted_once(backend):
 
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 def test_collection_creation_retries_retryable_vector_failures(monkeypatch, backend):
-    from kb_api.rag_indexer.common.config import RetryConfig
 
     monkeypatch.setattr("kb_api.rag_indexer.common.retry.time.sleep", lambda seconds: None)
     vector = make_vector(backend, [], lambda name: None)
@@ -263,8 +273,6 @@ def test_milvus_collection_setup_disables_controllable_retries():
 
 
 def test_installed_pymilvus_rate_limit_retry_is_disabled():
-    from pymilvus.decorators import retry_on_rpc_failure
-    from pymilvus.exceptions import ErrorCode, MilvusException
 
     error = MilvusException(code=ErrorCode.RATE_LIMIT, message="busy")
     operation = Mock(side_effect=error)
@@ -294,9 +302,6 @@ def test_milvus_index_validation_clips_timeout_and_disables_controllable_retries
 
 
 def test_installed_pymilvus_timeout_overrides_zero_retry_count(monkeypatch):
-    import grpc
-    from pymilvus.decorators import retry_on_rpc_failure
-    from pymilvus.exceptions import MilvusException
 
     class Unavailable(grpc.RpcError):
         def code(self):
@@ -317,8 +322,6 @@ def test_installed_pymilvus_timeout_overrides_zero_retry_count(monkeypatch):
 
 
 def test_installed_pymilvus_schema_mismatch_retries_without_switch():
-    from pymilvus.decorators import retry_on_schema_mismatch
-    from pymilvus.exceptions import DataNotMatchException
 
     error = RuntimeError("second attempt")
     operation = Mock(side_effect=[DataNotMatchException(message="schema"), error])
@@ -347,7 +350,6 @@ def test_installed_qdrant_rest_default_transport_has_no_retries():
 
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 def test_index_waiting_for_document_lock_checks_deadline_before_model(monkeypatch, backend):
-    from contextlib import contextmanager
 
     now = [0.0]
     monkeypatch.setattr(deadline.time, "monotonic", lambda: now[0])
@@ -367,8 +369,6 @@ def test_index_waiting_for_document_lock_checks_deadline_before_model(monkeypatc
 
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 def test_document_locks_serialize_same_file_and_allow_other_files(backend):
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Event
 
     vector = make_vector(backend, [], lambda name: None)
     entered = Event()
@@ -394,9 +394,6 @@ def test_document_locks_serialize_same_file_and_allow_other_files(backend):
 
 @pytest.mark.parametrize("response_kind", ["connection_error", "rate_limit"])
 def test_installed_qdrant_upsert_does_not_retry_http_failures(response_kind):
-    import httpx
-    from qdrant_client.common.client_exceptions import ResourceExhaustedResponse
-    from qdrant_client.http.exceptions import ResponseHandlingException
 
     calls = []
 

@@ -1,13 +1,14 @@
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
+from chat.src import main
+
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio
 async def test_create_checkpointer_falls_back_to_memory(monkeypatch):
-    from chat.src import main
 
     class FailingPool:
         check_connection = object()
@@ -31,7 +32,6 @@ async def test_create_checkpointer_falls_back_to_memory(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_create_checkpointer_uses_checked_connection_pool(monkeypatch):
-    from chat.src import main
 
     events = []
 

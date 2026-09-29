@@ -4,13 +4,15 @@ import httpx
 import pytest
 import yaml
 
+from kb_api.rag_retriever.common.config import RetryConfig
+from kb_api.rag_retriever.inference.config_loader import InferenceConfig, TeiConfig, load_inference_config
+from kb_api.rag_retriever.inference.service import load_inference_components
+
 
 @pytest.fixture
-def make_client():
-    from kb_api.rag_retriever.inference.config_loader import TeiConfig
-    from kb_api.rag_retriever.inference.providers.tei import TeiInferenceClient
-
+def make_client(monkeypatch):
     clients = []
+    http_client = httpx.Client
 
     def make(handler, **kwargs):
         dense_url = kwargs.pop("dense_url", "http://tei-dense:80")
@@ -26,7 +28,11 @@ def make_client():
             rerank_timeout=7.0,
             **kwargs,
         )
-        client = TeiInferenceClient(config, http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+        with monkeypatch.context() as patch:
+            patch.setattr(httpx, "Client", lambda **options: http_client(
+                **options, transport=httpx.MockTransport(handler),
+            ))
+            client = load_inference_components(InferenceConfig(tei=config))
         clients.append(client)
         return client
 
@@ -36,8 +42,6 @@ def make_client():
 
 
 def test_tei_config_selects_enabled_dense_and_optional_rerank(tmp_path, monkeypatch):
-    from kb_api.rag_retriever.inference.config_loader import load_inference_config
-
     monkeypatch.setenv("TEI_TIMEOUT", "1")
     path = tmp_path / "inference.yaml"
     path.write_text(yaml.safe_dump({"inference": {
@@ -83,16 +87,15 @@ def test_tei_config_selects_enabled_dense_and_optional_rerank(tmp_path, monkeypa
     assert config.tei.retry.interval_seconds == 0.5
 
 
-def test_dense_uses_tei_embed_endpoint(make_client):
+def test_dense_uses_tei_embed_endpoint_and_dimension(make_client):
     def handler(request):
         assert str(request.url) == "http://tei-dense/v1/embeddings"
         assert request.extensions["timeout"]["read"] == 12.0
         payload = json.loads(request.content)
-        assert payload == {"input": ["a", "b"], "model": "BAAI/bge-m3", "encoding_format": "float"}
+        assert payload == {"input": "a", "model": "BAAI/bge-m3", "encoding_format": "float"}
         return httpx.Response(200, json={
             "object": "list",
             "data": [
-                {"object": "embedding", "index": 1, "embedding": [0.3, 0.4]},
                 {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]},
             ],
             "model": "BAAI/bge-m3",
@@ -100,14 +103,12 @@ def test_dense_uses_tei_embed_endpoint(make_client):
 
     client = make_client(handler, dimensions=2)
 
-    assert client.dense.embed_documents(["a", "b"]) == [[0.1, 0.2], [0.3, 0.4]]
+    assert client.dense.embed_query("a") == [0.1, 0.2]
     assert client.dense.vector_size == 2
 
 
 def test_retryable_dense_failure_is_retried(make_client, monkeypatch):
-    from kb_api.rag_retriever.common.config import RetryConfig
-
-    monkeypatch.setattr("kb_api.rag_retriever.inference.common.retry.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("kb_api.rag_retriever.common.retry.time.sleep", lambda seconds: None)
     calls = []
 
     def handler(request):
@@ -122,7 +123,7 @@ def test_retryable_dense_failure_is_retried(make_client, monkeypatch):
 
     client = make_client(handler, dimensions=2, retry=RetryConfig(max_attempts=3, interval_seconds=0.5))
 
-    assert client.dense.embed_documents(["a"]) == [[0.1, 0.2]]
+    assert client.dense.embed_query("a") == [0.1, 0.2]
     assert len(calls) == 2
 
 

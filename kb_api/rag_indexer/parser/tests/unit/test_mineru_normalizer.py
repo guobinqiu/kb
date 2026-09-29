@@ -159,8 +159,6 @@ pytestmark = pytest.mark.unit
 
 
 def test_mineru_content_list_merges_text_fragments_and_drops_table_duplicates():
-    from kb_api.rag_indexer.parser.common.schema import TableBlock
-    from kb_api.rag_indexer.parser.providers.mineru.normalizer import content_list_to_blocks
 
     blocks = content_list_to_blocks(
         [
@@ -187,8 +185,6 @@ def test_mineru_content_list_merges_text_fragments_and_drops_table_duplicates():
         ),
     ]
 def test_mineru_preserves_native_heading_list_and_code():
-    from kb_api.rag_indexer.parser.common.schema import TextBlock
-    from kb_api.rag_indexer.parser.providers.mineru.normalizer import content_list_to_blocks
 
     blocks = content_list_to_blocks([
         {"type": "text", "text_level": 1, "text": "Title", "page_idx": 0},

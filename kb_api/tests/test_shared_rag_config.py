@@ -1,13 +1,13 @@
 import yaml
 
+from kb_api.rag_indexer.core.loader import load_app_config
+from kb_api.rag_indexer.inference.config_loader import load_inference_config as load_index_inference
+from kb_api.rag_indexer.parser.config_loader import load_parser_config
+from kb_api.rag_retriever.common.config import load_vector_config
+from kb_api.rag_retriever.inference.config_loader import load_inference_config as load_query_inference
+
 
 def test_entrypoints_read_shared_rag_configuration(tmp_path, monkeypatch):
-    from kb_api.rag_indexer.core.loader import load_app_config
-    from kb_api.rag_indexer.inference.config_loader import load_inference_config as load_index_inference
-    from kb_api.rag_indexer.parser.config_loader import load_parser_config
-    from kb_api.rag_retriever.common.config import load_vector_config
-    from kb_api.rag_retriever.inference.config_loader import load_inference_config as load_query_inference
-
     path = tmp_path / "rag.yaml"
     path.write_text(yaml.safe_dump({
         "vector_db": {"qdrant": {"enable": True, "base_url": "http://vector.example:6333"}},

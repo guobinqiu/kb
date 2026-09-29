@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.config import get_stream_writer
+
 
 def safe_get_writer():
     """获取 LangGraph stream_writer；不可用（如 ainvoke 路径）时返回 None。
@@ -15,8 +17,6 @@ def safe_get_writer():
     - graph.ainvoke 路径：get_stream_writer() 抛异常 → 返回 None
     """
     try:
-        from langgraph.config import get_stream_writer
-
         return get_stream_writer()
     except Exception:  # noqa: BLE001
         return None

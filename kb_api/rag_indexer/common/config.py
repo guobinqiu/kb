@@ -1,31 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 
 @dataclass(frozen=True)
 class RetryConfig:
     max_attempts: int = 3
     interval_seconds: float = 0.5
-
-
-@dataclass(frozen=True)
-class DenseConfig:
-    name: str
-    model_path: str | None = None
-    model_name: str | None = None
-    batch_size: int = 4
-    release_memory: EmbeddingReleasePolicy = "per_batch"
-
-
-@dataclass(frozen=True)
-class SparseConfig:
-    name: str
-    model_path: str | None = None
-    model_name: str | None = None
-    batch_size: int = 4
-    release_memory: EmbeddingReleasePolicy = "per_batch"
 
 
 @dataclass(frozen=True)
@@ -49,9 +31,6 @@ class VectorServiceConfig:
     quantization: QdrantQuantizationConfig | None = None
     api_key: str | None = field(default=None, repr=False)
     token: str | None = field(default=None, repr=False)
-
-
-EmbeddingReleasePolicy = Literal["per_batch", "after_call", "never"]
 
 
 @dataclass(frozen=True)
@@ -78,14 +57,19 @@ class StorageConfig:
 
 
 @dataclass(frozen=True)
-class RerankConfig:
-    name: str
-    model_path: str | None = None
-    model_name: str | None = None
+class CallbackConfig:
+    url: str = "http://kb_api:6100/api/v1/index-results"
+    timeout: float = 10
+
+
+@dataclass(frozen=True)
+class IndexerConfig:
+    callback: CallbackConfig = field(default_factory=CallbackConfig)
 
 
 @dataclass(frozen=True)
 class AppConfig:
+    indexer: IndexerConfig = field(default_factory=IndexerConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     services: ServiceClientsConfig = field(default_factory=ServiceClientsConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
@@ -97,9 +81,14 @@ def parse_app_config(raw: dict[str, Any]) -> AppConfig:
     services = raw.get("services") or {}
     services_config = _parse_service_clients_config(services)
     storage = raw.get("storage") or {}
+    callback = (raw.get("indexer") or {}).get("callback") or {}
     if services_config.vector is None:
         raise ValueError("services.vector is required")
     return AppConfig(
+        indexer=IndexerConfig(callback=CallbackConfig(
+            url=str(callback.get("url", "http://kb_api:6100/api/v1/index-results")),
+            timeout=float(callback.get("timeout", 10)),
+        )),
         chunking=_parse_chunking_config(raw.get("chunking") or {}),
         services=services_config,
         storage=StorageConfig(

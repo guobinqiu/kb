@@ -23,4 +23,4 @@ COPY kb_api/__init__.py /app/kb_api/
 COPY kb_api/config /app/kb_api/config
 COPY kb_api/rag_indexer /app/kb_api/rag_indexer
 
-CMD ["/app/.venv/bin/uvicorn", "kb_api.rag_indexer.app.main:app", "--host", "0.0.0.0", "--port", "6000", "--workers", "1"]
+CMD ["/app/.venv/bin/python", "-m", "kb_api.rag_indexer.app.main"]

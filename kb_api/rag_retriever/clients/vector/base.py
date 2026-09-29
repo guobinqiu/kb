@@ -4,41 +4,14 @@ from typing import Protocol
 from contextlib import AbstractContextManager
 
 
-SearchMode = str
-
-
 class VectorClient(Protocol):
     backend_name: str
     ready: bool
 
-    def start(self) -> None:
-        ...
-
-    def stop(self) -> None:
-        ...
-
-    def drop_collections(self) -> None:
-        ...
-
-    def add_file_chunks(self, chunks: list[dict], file_id: str) -> int:
-        ...
-
-    def delete_file_chunks(self, file_id: str) -> int:
-        ...
-
-    def delete_stale_file_chunks(self, file_id: str, keep_count: int) -> int:
-        ...
-
-    def get_total_chunks(self, file_ids: list[str] | None = None) -> int:
+    def close(self) -> None:
         ...
 
     def list_chunks(self, file_ids: list[str] | None = None, limit: int = 50, cursor: str | None = None, workspace_ids: list[str] | None = None) -> dict:
-        ...
-
-    def get_dense_vector(self, chunk_id: str) -> list[float] | None:
-        ...
-
-    def supports_dense_vector(self) -> bool:
         ...
 
     def supports_sparse_vector(self) -> bool:
@@ -54,9 +27,6 @@ class VectorClient(Protocol):
         ...
 
     def app_scope(self, app_id: str) -> AbstractContextManager:
-        ...
-
-    def build_file_filter(self, file_ids: list[str] | None = None):
         ...
 
     def build_metadata_filter(self, file_ids: list[str] | None = None, workspace_ids: list[str] | None = None):

@@ -10,10 +10,10 @@ def upload_file(system, *, workspace_id, file_id=None, filename="guide.txt", dat
     )
     assert prepared.status_code == 200, prepared.text
     upload = prepared.json()
-    system["storage"].objects[upload["object_key"]] = data
+    system["storage"].objects[upload["s3_url"]] = data
     completed = client.post(
         f"{base}/{upload['file_id']}/complete",
-        json={"object_key": upload["object_key"], "filename": filename},
+        json={"s3_url": upload["s3_url"], "filename": filename},
         headers=headers,
     )
     assert completed.status_code == 202, completed.text

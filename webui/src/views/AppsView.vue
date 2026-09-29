@@ -43,7 +43,7 @@
             <template #default="{ row }">
               <div class="app-row-actions">
                 <el-button type="primary" size="small" @click="selectApp(row)">{{ t('apps.enter') }}</el-button>
-                <el-button v-if="isPlatformAdmin" type="danger" size="small" plain @click="deleteApp(row)">{{ t('common.delete') }}</el-button>
+                <el-button :disabled="!isPlatformAdmin" type="danger" size="small" plain @click="deleteApp(row)">{{ t('common.delete') }}</el-button>
               </div>
             </template>
           </el-table-column>

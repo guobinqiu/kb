@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from kb_api.auth import create_token, decode_token, hash_password, verify_password
+from kb_api.api.auth import create_token, decode_token, hash_password, verify_password
 
 
 def test_password_is_pbkdf2_and_verifies_without_storing_plaintext():

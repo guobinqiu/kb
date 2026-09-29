@@ -1,11 +1,11 @@
 import pytest
+from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
 
 
 pytestmark = pytest.mark.unit
 
 
 def test_close_vector_closes_qdrant_client_and_clears_vector_cache():
-    from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
 
     class FakeDense:
         ready = True

@@ -5,7 +5,7 @@ import pytest
 from kb_api.rag_retriever.common.config import SearchConfig
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
 from kb_api.rag_retriever.schemas import SearchRequest
-from kb_api.rag_retriever.service import Retriever
+from kb_api.rag_retriever.service import Retriever, RetrieverRequestError
 
 
 pytestmark = pytest.mark.unit
@@ -29,11 +29,9 @@ def test_retriever_closes_vector_and_inference():
 
 
 def test_retriever_preserves_dependency_error_fields():
-    class DependencyError(Exception):
-        service = "vector"
-        error = "temporarily unavailable"
-        retryable = True
-        status_code = 503
+    error = UpstreamServiceError(
+        service="vector", error="temporarily unavailable", retryable=True, status_code=503,
+    )
 
     class Vector:
         def supports_sparse_vector(self):
@@ -49,7 +47,7 @@ def test_retriever_preserves_dependency_error_fields():
             return None
 
         def encode_dense_query(self, query):
-            raise DependencyError()
+            raise error
 
         def query_dense_vector(self, query_vector, limit, metadata_filter):
             return []
@@ -61,6 +59,7 @@ def test_retriever_preserves_dependency_error_fields():
         retriever.search(SearchRequest(query="test", app_id="imsdom", workspace_ids=["workspace-1"]))
 
     assert caught.value.service == "vector"
+    assert caught.value is error
     assert caught.value.error == "temporarily unavailable"
     assert caught.value.retryable is True
     assert caught.value.status_code == 503
@@ -109,3 +108,21 @@ def test_retriever_searches_one_app_collection_for_multiple_workspaces():
 def test_search_request_rejects_empty_workspace_ids():
     with pytest.raises(ValueError, match="workspace_ids"):
         SearchRequest(query="test", app_id="imsdom", workspace_ids=[])
+
+
+def test_sparse_search_without_provider_raises_neutral_request_error():
+    class Vector:
+        def supports_sparse_vector(self):
+            return False
+
+    inference = type("Inference", (), {"rerank": None})()
+    retriever = Retriever(SearchConfig(), Vector(), inference)
+
+    with pytest.raises(RetrieverRequestError) as caught:
+        retriever.search(SearchRequest(
+            query="test", app_id="imsdom", workspace_ids=["workspace-1"], mode="sparse",
+        ))
+
+    assert isinstance(caught.value, ValueError)
+    assert caught.value.status_code == 400
+    assert caught.value.detail == "sparse search is not configured"

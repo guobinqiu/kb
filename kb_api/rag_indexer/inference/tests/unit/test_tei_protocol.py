@@ -3,30 +3,28 @@ import json
 import httpx
 import pytest
 import yaml
+from kb_api.rag_indexer.inference.service import InferenceComponents
+from kb_api.rag_indexer.inference.providers.tei import TeiDenseClient
+from kb_api.rag_indexer.inference.config_loader import load_inference_config
+from kb_api.rag_indexer.common.config import RetryConfig
 
 
 @pytest.fixture
 def make_client():
-    from kb_api.rag_indexer.inference.config_loader import TeiConfig
-    from kb_api.rag_indexer.inference.providers.tei import TeiInferenceClient
 
     clients = []
 
     def make(handler, **kwargs):
         dense_url = kwargs.pop("dense_url", "http://tei-dense:80")
         dense_model = kwargs.pop("dense_model", "BAAI/bge-m3")
-        rerank_url = kwargs.pop("rerank_url", "http://tei-rerank:80")
-        rerank_model = kwargs.pop("rerank_model", "BAAI/bge-reranker-v2-m3")
-        config = TeiConfig(
-            dense_url=dense_url,
-            dense_model=dense_model,
-            rerank_url=rerank_url,
-            rerank_model=rerank_model,
-            dense_timeout=12.0,
-            rerank_timeout=7.0,
+        dense = TeiDenseClient(
+            base_url=dense_url,
+            model=dense_model,
+            timeout=12.0,
+            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
             **kwargs,
         )
-        client = TeiInferenceClient(config, http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+        client = InferenceComponents(dense)
         clients.append(client)
         return client
 
@@ -35,8 +33,7 @@ def make_client():
         client.close()
 
 
-def test_tei_config_selects_enabled_dense_and_optional_rerank(tmp_path, monkeypatch):
-    from kb_api.rag_indexer.inference.config_loader import load_inference_config
+def test_tei_config_selects_enabled_dense(tmp_path, monkeypatch):
 
     monkeypatch.setenv("TEI_TIMEOUT", "1")
     path = tmp_path / "inference.yaml"
@@ -56,6 +53,7 @@ def test_tei_config_selects_enabled_dense_and_optional_rerank(tmp_path, monkeypa
                     "base_url": "http://tei-bge-m3:80",
                     "dimensions": 1024,
                     "timeout": 90,
+                    "batch_size": 16,
                 },
             },
             "rerank": {
@@ -75,12 +73,11 @@ def test_tei_config_selects_enabled_dense_and_optional_rerank(tmp_path, monkeypa
     assert config.tei.dense_url == "http://tei-bge-m3:80"
     assert config.tei.dense_model == "BAAI/bge-m3"
     assert config.tei.dimensions == 1024
-    assert config.tei.rerank_url == "http://tei-rerank:80"
-    assert config.tei.rerank_model == "BAAI/bge-reranker-v2-m3"
     assert config.tei.dense_timeout == 90.0
-    assert config.tei.rerank_timeout == 30.0
     assert config.tei.retry.max_attempts == 3
     assert config.tei.retry.interval_seconds == 0.5
+    assert config.tei.batch_size == 16
+    assert config.dense_models[0].batch_size == 16
 
 
 def test_dense_uses_tei_embed_endpoint(make_client):
@@ -105,9 +102,8 @@ def test_dense_uses_tei_embed_endpoint(make_client):
 
 
 def test_retryable_dense_failure_is_retried(make_client, monkeypatch):
-    from kb_api.rag_indexer.inference.common.config import RetryConfig
 
-    monkeypatch.setattr("kb_api.rag_indexer.inference.common.retry.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("kb_api.rag_indexer.common.retry.time.sleep", lambda seconds: None)
     calls = []
 
     def handler(request):
@@ -143,47 +139,25 @@ def test_dense_query_uses_single_input_string(make_client):
     assert client.dense.embed_query("q") == [0.5, 0.6]
 
 
-def test_rerank_uses_tei_rerank_endpoint(make_client):
-    items = [{"content": "a", "id": "a"}, {"content": "b", "metadata": {"page": 2}}]
+@pytest.mark.parametrize("batch_size, expected_sizes", [(32, [32, 32, 32, 17]), (16, [16, 16, 16, 16, 16, 16, 16, 1])])
+def test_dense_batches_documents_and_preserves_order(make_client, batch_size, expected_sizes):
+    batches = []
 
     def handler(request):
-        assert str(request.url) == "http://tei-rerank/rerank"
-        assert json.loads(request.content) == {
-            "query": "q",
-            "texts": ["a", "b"],
-            "raw_scores": False,
-            "return_text": False,
-        }
-        return httpx.Response(200, json=[
-            {"index": 1, "score": 0.9},
-        ])
+        texts = json.loads(request.content)["input"]
+        batches.append(texts)
+        if len(texts) > 32:
+            return httpx.Response(413, json={"error": "batch size exceeds 32"})
+        return httpx.Response(200, json={
+            "data": [
+                {"index": index, "embedding": [float(text), 0.0]}
+                for index, text in reversed(list(enumerate(texts)))
+            ],
+        })
 
-    client = make_client(handler)
+    client = make_client(handler, dimensions=2, batch_size=batch_size)
 
-    assert client.rerank.rerank("q", items, 1) == [
-        {"content": "b", "metadata": {"page": 2}, "_score": 0.9},
+    assert client.dense.embed_documents([str(index) for index in range(113)]) == [
+        [float(index), 0.0] for index in range(113)
     ]
-    assert "_score" not in items[1]
-
-
-def test_rerank_accepts_full_sorted_rows_and_applies_top_k(make_client):
-    items = [{"content": "a"}, {"content": "b"}]
-
-    def handler(request):
-        return httpx.Response(200, json=[
-            {"index": 0, "score": 0.99},
-            {"index": 1, "score": 0.01},
-        ])
-
-    client = make_client(handler)
-
-    assert client.rerank.rerank("q", items, 1) == [
-        {"content": "a", "_score": 0.99},
-    ]
-
-
-def test_rerank_can_be_disabled(make_client):
-    client = make_client(lambda request: httpx.Response(500), rerank_model=None, rerank_url=None)
-
-    assert client.rerank is None
-    assert client.ping()
+    assert [len(batch) for batch in batches] == expected_sizes

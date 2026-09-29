@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from PIL import Image, ImageDraw, ImageFont
 
 
 @pytest.fixture
@@ -23,7 +24,6 @@ def test_txt_path(tmp_path):
 
 @pytest.fixture
 def test_img_path(tmp_path):
-    from PIL import Image, ImageDraw, ImageFont
 
     try:
         font = ImageFont.truetype("/System/Library/Fonts/STHeiti Medium.ttc", 18)

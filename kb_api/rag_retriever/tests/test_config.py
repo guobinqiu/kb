@@ -55,7 +55,7 @@ def test_vector_config_timeouts_fall_back_to_general_timeout(tmp_path, timeout, 
 
     config = load_vector_config(config_path)
 
-    assert (config.timeout, config.query_timeout, config.write_timeout, config.init_timeout, config.drop_timeout) == (expected,) * 5
+    assert (config.timeout, config.query_timeout, config.init_timeout, config.drop_timeout) == (expected,) * 4
     assert config.retry == RetryConfig()
     assert config.quantization is None
 
@@ -79,7 +79,7 @@ def test_vector_config_reads_explicit_timeouts_retry_and_quantization(tmp_path, 
     config = load_vector_config(config_path)
 
     assert config.provider == "qdrant"
-    assert (config.timeout, config.query_timeout, config.write_timeout, config.init_timeout, config.drop_timeout) == (17, 4, 8, 12, 16)
+    assert (config.timeout, config.query_timeout, config.init_timeout, config.drop_timeout) == (17, 4, 12, 16)
     assert config.retry == RetryConfig(max_attempts=1, interval_seconds=0.0)
     assert config.quantization == QdrantQuantizationConfig(enable=True, type="int8", quantile=0.99, always_ram=False)
     assert config.api_key is None

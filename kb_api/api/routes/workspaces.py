@@ -9,8 +9,8 @@ from kb_api.api.schemas import (
     WorkspaceMemberUpdate,
     WorkspaceUpdate,
 )
-from kb_api.auth import current_user
-from kb_api.permissions import (
+from kb_api.api.auth import current_user
+from kb_api.api.permissions import (
     WORKSPACE_CREATE,
     WORKSPACE_DELETE,
     WORKSPACE_MEMBERS_MANAGE,
@@ -24,113 +24,118 @@ apps_router = APIRouter(prefix="/api/v1/apps", tags=["workspaces"])
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
 
-def _workspace(repository, workspace_id: str, user: dict) -> dict:
-    workspace = repository.get_workspace(workspace_id)
-    if not workspace or not repository.has_workspace_access(user, workspace_id):
+def _workspace(dao, workspace_id: str, user: dict) -> dict:
+    workspace = dao.get_workspace(workspace_id)
+    if not workspace or not dao.has_workspace_access(user, workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
     return workspace
 
 
-def _member_org(repository, workspace: dict, org_id: str | None) -> dict:
-    org = repository.get_org(org_id) if org_id else None
-    if not org or org["app_id"] != workspace["app_id"] or not repository.is_active_org(org["id"]):
+def _member_org(dao, workspace: dict, org_id: str | None) -> dict:
+    org = dao.get_org(org_id) if org_id else None
+    if not org or org["app_id"] != workspace["app_id"] or not dao.is_active_org(org["id"]):
         raise HTTPException(status_code=422, detail="Org must belong to the workspace app")
     return org
 
 
-def _managed_workspace(repository, workspace_id: str, user: dict) -> dict:
-    workspace = _workspace(repository, workspace_id, user)
-    if not has_workspace_permission(repository, user, workspace, WORKSPACE_MEMBERS_MANAGE):
+def _managed_workspace(dao, workspace_id: str, user: dict) -> dict:
+    workspace = _workspace(dao, workspace_id, user)
+    if not has_workspace_permission(dao, user, workspace, WORKSPACE_MEMBERS_MANAGE):
         raise HTTPException(status_code=403, detail="Workspace member management denied")
     return workspace
 
 
 @apps_router.get("/{app_id}/workspaces")
 def list_workspaces(app_id: str, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    app = repository.get_app(app_id)
+    dao = request.app.state.dao
+    app = dao.get_app(app_id)
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
-    org = repository.get_org(user["org_id"]) if user.get("org_id") else None
+    org = dao.get_org(user["org_id"]) if user.get("org_id") else None
     if user["role"] != "owner" and (not org or org["app_id"] != app_id):
         raise HTTPException(status_code=404, detail="App not found")
-    workspaces = repository.list_workspaces(app_id)
+    workspaces = dao.list_workspaces(app_id)
     workspaces = [
-        {**item, "role": repository.get_workspace_role(user, item["id"]),
-         "permissions": workspace_permissions(repository, user, item)}
-        for item in workspaces if repository.has_workspace_access(user, item["id"])
+        {**item, "role": dao.get_workspace_role(user, item["id"]),
+         "permissions": workspace_permissions(dao, user, item)}
+        for item in workspaces if dao.has_workspace_access(user, item["id"])
     ]
-    return {"workspaces": workspaces, "permissions": {WORKSPACE_CREATE: can_manage_app(repository, user, app_id)}}
+    return {"workspaces": workspaces, "permissions": {WORKSPACE_CREATE: can_manage_app(dao, user, app_id)}}
 
 
 @apps_router.post("/{app_id}/workspaces", status_code=status.HTTP_201_CREATED)
 def create_workspace(app_id: str, body: WorkspaceCreate, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    if not repository.get_app(app_id):
+    dao = request.app.state.dao
+    if not dao.get_app(app_id):
         raise HTTPException(status_code=404, detail="App not found")
-    if not can_manage_app(repository, user, app_id):
+    if not can_manage_app(dao, user, app_id):
         raise HTTPException(status_code=403, detail="Administrator required")
-    return {"workspace": repository.create_workspace(app_id, body.name, creator_id=user["id"])}
+    return {"workspace": dao.create_workspace(app_id, body.name, creator_id=user["id"])}
 
 
 @router.get("/{workspace_id}")
 def get_workspace(workspace_id: str, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    workspace = _workspace(repository, workspace_id, user)
-    return {"workspace": workspace, "role": repository.get_workspace_role(user, workspace_id),
-            "permissions": workspace_permissions(repository, user, workspace)}
+    dao = request.app.state.dao
+    workspace = _workspace(dao, workspace_id, user)
+    return {"workspace": workspace, "role": dao.get_workspace_role(user, workspace_id),
+            "permissions": workspace_permissions(dao, user, workspace)}
 
 
 @router.put("/{workspace_id}")
 def update_workspace(workspace_id: str, body: WorkspaceUpdate, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    workspace = _workspace(repository, workspace_id, user)
-    if not has_workspace_permission(repository, user, workspace, WORKSPACE_UPDATE):
+    dao = request.app.state.dao
+    workspace = _workspace(dao, workspace_id, user)
+    if not has_workspace_permission(dao, user, workspace, WORKSPACE_UPDATE):
         raise HTTPException(status_code=403, detail="Administrator required")
-    return {"workspace": repository.update_workspace(workspace_id, body.name)}
+    return {"workspace": dao.update_workspace(workspace_id, body.name)}
 
 
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_workspace(workspace_id: str, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    workspace = _workspace(repository, workspace_id, user)
-    if not has_workspace_permission(repository, user, workspace, WORKSPACE_DELETE):
+    dao = request.app.state.dao
+    workspace = dao.get_workspace(workspace_id) if user["role"] == "owner" else _workspace(dao, workspace_id, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if not has_workspace_permission(dao, user, workspace, WORKSPACE_DELETE):
         raise HTTPException(status_code=403, detail="Administrator required")
-    if repository.list_workspace_files(workspace_id):
+    if dao.list_workspace_files(workspace_id):
         raise HTTPException(status_code=409, detail="Workspace contains files")
-    repository.delete_workspace(workspace_id)
+    try:
+        dao.delete_workspace(workspace_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{workspace_id}/members")
 def list_members(workspace_id: str, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    _workspace(repository, workspace_id, user)
-    return {"members": repository.list_workspace_members(workspace_id)}
+    dao = request.app.state.dao
+    _workspace(dao, workspace_id, user)
+    return {"members": dao.list_workspace_members(workspace_id)}
 
 
 @router.post("/{workspace_id}/members", status_code=status.HTTP_201_CREATED)
 def add_member(workspace_id: str, body: WorkspaceMemberCreate, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    workspace = _managed_workspace(repository, workspace_id, user)
+    dao = request.app.state.dao
+    workspace = _managed_workspace(dao, workspace_id, user)
     if body.type == "org":
-        _member_org(repository, workspace, body.id)
-        return {"member": repository.add_workspace_org(workspace_id, org_id=body.id, role=body.role)}
-    member_user = repository.get_user(body.id)
+        _member_org(dao, workspace, body.id)
+        return {"member": dao.add_workspace_org(workspace_id, org_id=body.id, role=body.role)}
+    member_user = dao.get_user(body.id)
     if not member_user or member_user.get("deleted_at") or not member_user.get("org_id"):
         raise HTTPException(status_code=422, detail="User must belong to the workspace app")
-    _member_org(repository, workspace, member_user["org_id"])
+    _member_org(dao, workspace, member_user["org_id"])
     try:
-        return {"member": repository.add_workspace_member(workspace_id, user_id=body.id, role=body.role)}
+        return {"member": dao.add_workspace_member(workspace_id, user_id=body.id, role=body.role)}
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/{workspace_id}/orgs")
 def list_orgs(workspace_id: str, request: Request, user=Depends(current_user)):
-    repository = request.app.state.repository
-    workspace = _managed_workspace(repository, workspace_id, user)
-    return {"orgs": repository.list_app_orgs(workspace["app_id"])}
+    dao = request.app.state.dao
+    workspace = _managed_workspace(dao, workspace_id, user)
+    return {"orgs": dao.list_app_orgs(workspace["app_id"])}
 
 
 @router.get("/{workspace_id}/users")
@@ -139,12 +144,12 @@ def list_users(
     page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
     query: str = Query(default="", max_length=200), user=Depends(current_user),
 ):
-    repository = request.app.state.repository
-    workspace = _managed_workspace(repository, workspace_id, user)
+    dao = request.app.state.dao
+    workspace = _managed_workspace(dao, workspace_id, user)
     selected_org = str(org_id) if org_id is not None else None
     if selected_org is not None:
-        _member_org(repository, workspace, selected_org)
-    return repository.list_workspace_users(
+        _member_org(dao, workspace, selected_org)
+    return dao.list_workspace_users(
         workspace_id, org_id=selected_org, query=query.strip(), page=page, page_size=page_size,
     )
 
@@ -152,11 +157,11 @@ def list_users(
 @router.put("/{workspace_id}/members/{member_id}")
 def update_member(workspace_id: str, member_id: str, body: WorkspaceMemberUpdate,
                   request: Request, type: Literal["user", "org"], user=Depends(current_user)):
-    repository = request.app.state.repository
-    _managed_workspace(repository, workspace_id, user)
+    dao = request.app.state.dao
+    _managed_workspace(dao, workspace_id, user)
     if type == "org" and body.role == "admin":
         raise HTTPException(status_code=422, detail="Organizations cannot be workspace administrators")
-    update = repository.update_workspace_org if type == "org" else repository.update_workspace_member
+    update = dao.update_workspace_org if type == "org" else dao.update_workspace_member
     try:
         member = update(workspace_id, member_id, role=body.role)
     except ValueError as exc:
@@ -168,9 +173,9 @@ def update_member(workspace_id: str, member_id: str, body: WorkspaceMemberUpdate
 
 @router.delete("/{workspace_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_member(workspace_id: str, member_id: str, request: Request, type: Literal["user", "org"], user=Depends(current_user)):
-    repository = request.app.state.repository
-    _managed_workspace(repository, workspace_id, user)
-    delete = repository.delete_workspace_org if type == "org" else repository.delete_workspace_member
+    dao = request.app.state.dao
+    _managed_workspace(dao, workspace_id, user)
+    delete = dao.delete_workspace_org if type == "org" else dao.delete_workspace_member
     try:
         deleted = delete(workspace_id, member_id)
     except ValueError as exc:

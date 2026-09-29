@@ -1,3 +1,9 @@
+indexer:
+  callback:
+    # 内网 Indexer 部署时改为可访问的 KB API 对外入口地址
+    url: http://kb_api:6100/api/v1/index-results
+    timeout: 10 # 单位秒
+
 search:
   mode: hybrid
   top_k: 5
@@ -101,6 +107,7 @@ inference:
         model_name: BAAI/bge-m3
         base_url: http://19.16.1.233:8081
         dimensions: 1024
+        batch_size: 32 # 每次 embedding 请求的分片数，不超过 TEI 的 max_client_batch_size
         timeout: 30
     rerank:
       bge_m3:

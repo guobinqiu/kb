@@ -6,6 +6,7 @@ import pytest
 
 from kb_api.rag_indexer.parser.service import ParserService
 from kb_api.rag_indexer.parser.common.config import ParserConfig
+from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
 
 def test_parser_downloads_url_once_and_cleans_file(monkeypatch):
@@ -73,7 +74,6 @@ def test_url_download_uses_configured_timeout():
 
 
 def test_cloud_config_reads_token_from_environment(tmp_path, monkeypatch):
-    from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
     monkeypatch.setenv("MINERU_API_KEY", "cloud-token")
     config_file = tmp_path / "parser.yaml"

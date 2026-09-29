@@ -6,8 +6,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from kb_api.rag_retriever.common.config import RetryConfig
-from kb_api.rag_retriever.common.deadline import check_deadline
-from kb_api.rag_retriever.common.tracing import get_trace_id
+from kb_api.api.telemetry import get_trace_id
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
 
 
@@ -23,15 +22,15 @@ def retry_call(
     operation_name: str = "operation",
 ) -> T:
     attempts = max(1, config.max_attempts)
+    operation_logger = logging.getLogger("inference.retry") if operation_name.startswith("inference.") else logger
     for attempt in range(1, attempts + 1):
         try:
-            check_deadline()
             return operation()
         except Exception as exc:
             retryable = _is_retryable(exc, should_retry)
             if attempt >= attempts or not retryable:
                 raise
-            logger.warning(
+            operation_logger.warning(
                 "Retryable operation failed; retrying",
                 extra={
                     "event": "retry_attempt",
@@ -43,7 +42,6 @@ def retry_call(
                 },
             )
             if config.interval_seconds:
-                check_deadline()
                 time.sleep(config.interval_seconds)
     raise RuntimeError("retry attempts exhausted")
 

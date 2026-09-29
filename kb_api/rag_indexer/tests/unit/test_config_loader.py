@@ -1,11 +1,14 @@
 import pytest
+from kb_api.rag_indexer.core.loader import load_app_config
+import yaml
+from kb_api.rag_indexer.core.loader import load_config_file
+from kb_api.rag_indexer.core import loader
 
 
 pytestmark = pytest.mark.unit
 
 
 def test_vector_fixture_loads_index_configuration(vector_test_env):
-    from kb_api.rag_indexer.core.loader import load_app_config
 
     assert load_app_config().services.vector.provider == "qdrant"
 
@@ -31,8 +34,6 @@ def _base_config(vector: str = "qdrant") -> dict:
 
 
 def test_load_config_file_reads_qdrant_config(tmp_path):
-    import yaml
-    from kb_api.rag_indexer.core.loader import load_config_file
 
     path = tmp_path / "rag.yaml"
     path.write_text(yaml.safe_dump(_base_config("qdrant")), encoding="utf-8")
@@ -49,8 +50,6 @@ def test_load_config_file_reads_qdrant_config(tmp_path):
 
 
 def test_load_config_file_reads_service_bound_milvus_config(tmp_path):
-    import yaml
-    from kb_api.rag_indexer.core.loader import load_config_file
 
     path = tmp_path / "milvus.yaml"
     path.write_text(yaml.safe_dump(_base_config("milvus")), encoding="utf-8")
@@ -62,8 +61,6 @@ def test_load_config_file_reads_service_bound_milvus_config(tmp_path):
 
 @pytest.mark.parametrize("selected,provider", [("qdrant_cloud", "qdrant"), ("milvus_cloud", "milvus")])
 def test_cloud_vector_selection_keeps_cloud_endpoint(tmp_path, monkeypatch, selected, provider):
-    import yaml
-    from kb_api.rag_indexer.core.loader import load_config_file
 
     monkeypatch.setenv("MILVUS_CLOUD_TOKEN", "cloud-token")
     monkeypatch.setenv("QDRANT_CLOUD_API_KEY", "cloud-key")
@@ -84,8 +81,6 @@ def test_cloud_vector_selection_keeps_cloud_endpoint(tmp_path, monkeypatch, sele
 
 
 def test_load_app_config_uses_project_yaml_by_default(tmp_path, monkeypatch):
-    import yaml
-    from kb_api.rag_indexer.core import loader
 
     path = tmp_path / "config/rag.yaml"
     path.parent.mkdir(parents=True)
@@ -99,8 +94,6 @@ def test_load_app_config_uses_project_yaml_by_default(tmp_path, monkeypatch):
 
 
 def test_load_config_file_selects_one_enabled_vector_backend(tmp_path):
-    import yaml
-    from kb_api.rag_indexer.core.loader import load_config_file
 
     raw = _base_config("qdrant")
     raw["vector_db"]["qdrant"] = {"enable": False}

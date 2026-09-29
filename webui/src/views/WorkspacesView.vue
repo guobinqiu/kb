@@ -3,9 +3,9 @@
     <SectionHeader :description="t('workspaces.desc')">
       <template #actions><RefreshButton :loading="loading" @click="fetchWorkspaces" /></template>
     </SectionHeader>
-    <el-form v-if="canCreateWorkspace" class="create-row" @submit.prevent="create">
-      <el-input v-model.trim="name" :placeholder="t('workspaces.namePlaceholder')" maxlength="100" clearable />
-      <el-button type="primary" native-type="submit" :loading="creating" :disabled="!name">{{ t('workspaces.create') }}</el-button>
+    <el-form class="create-row" @submit.prevent="create">
+      <el-input v-model.trim="name" :disabled="!canCreateWorkspace" :placeholder="t('workspaces.namePlaceholder')" maxlength="100" clearable />
+      <el-button type="primary" native-type="submit" :loading="creating" :disabled="!canCreateWorkspace || !name">{{ t('workspaces.create') }}</el-button>
     </el-form>
     <el-table v-if="workspaces.length" :data="workspaces" style="width: 100%" @row-click="openWorkspace">
       <el-table-column prop="name" :label="t('workspaces.name')" min-width="220" show-overflow-tooltip />
@@ -15,8 +15,8 @@
       </el-table-column>
       <el-table-column :label="t('common.actions')" width="160" align="right">
         <template #default="{ row }">
-          <el-button text type="primary" @click.stop="openWorkspace(row)">{{ t('apps.enter') }}</el-button>
-          <el-button v-if="row.permissions?.['workspace.delete'] === true" text type="danger" :loading="deletingId === row.id" @click.stop="deleteWorkspace(row)">{{ t('common.delete') }}</el-button>
+          <el-button text type="primary" :disabled="row.permissions?.['workspace.files.read'] !== true" @click.stop="openWorkspace(row)">{{ t('apps.enter') }}</el-button>
+          <el-button text type="danger" :disabled="row.permissions?.['workspace.delete'] !== true" :loading="deletingId === row.id" @click.stop="deleteWorkspace(row)">{{ t('common.delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -58,6 +58,7 @@ async function fetchWorkspaces() {
 }
 
 function openWorkspace(workspace) {
+  if (workspace.permissions?.['workspace.files.read'] !== true) return
   router.push(`/apps/${route.params.app_id}/workspaces/${workspace.id}/files`)
 }
 
@@ -70,7 +71,10 @@ async function create() {
     if (route.params.app_id !== appId) return
     name.value = ''
     await fetchWorkspaces()
-    if (route.params.app_id === appId) openWorkspace(workspace)
+    if (route.params.app_id === appId) {
+      const createdWorkspace = workspaces.value.find(row => row.id === workspace.id)
+      if (createdWorkspace) openWorkspace(createdWorkspace)
+    }
   } catch (err) {
     showToast('error', errorMessage(err))
   } finally {

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from kb_api.auth import current_user
-from kb_api.permissions import WORKSPACE_FILES_READ, has_workspace_permission
+from kb_api.api.auth import current_user
+from kb_api.api.permissions import WORKSPACE_FILES_READ, has_workspace_permission
 
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["chunks"])
@@ -16,16 +16,16 @@ def list_chunks(
     file_ids: list[str] | None = Query(default=None, max_length=1000),
     user=Depends(current_user),
 ):
-    repository = request.app.state.repository
-    workspace = repository.get_workspace(workspace_id)
-    if not workspace or not has_workspace_permission(repository, user, workspace, WORKSPACE_FILES_READ):
+    dao = request.app.state.dao
+    workspace = dao.get_workspace(workspace_id)
+    if not workspace or not has_workspace_permission(dao, user, workspace, WORKSPACE_FILES_READ):
         raise HTTPException(status_code=404, detail="Workspace not found")
-    app = repository.get_app(workspace["app_id"])
+    app = dao.get_app(workspace["app_id"])
     if app is None:
         raise HTTPException(status_code=404, detail="App not found")
     visible_files = {
         record["id"]: record
-        for record in repository.list_workspace_files(workspace_id)
+        for record in dao.list_workspace_files(workspace_id)
     }
     allowed_file_ids = list(visible_files)
     if file_ids is not None:

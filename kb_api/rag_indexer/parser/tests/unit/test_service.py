@@ -4,6 +4,9 @@ import pytest
 
 from kb_api.rag_indexer.parser.service import ParserService
 from kb_api.rag_indexer.parser.common.config import ParserConfig
+import kb_api.rag_indexer.parser.service as service_mod
+from kb_api.rag_indexer.parser.common.config import MineruCloudParserConfig
+import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
 
 
 class SlowDocumentParser:
@@ -22,7 +25,6 @@ class SlowDocumentParser:
 
 
 def test_parser_service_serializes_parse_file_calls(monkeypatch):
-    import kb_api.rag_indexer.parser.service as service_mod
 
     monkeypatch.setattr(service_mod, "validate_pdf_file", lambda filepath: None)
     service = ParserService(ParserConfig())
@@ -43,8 +45,6 @@ def test_parser_service_serializes_parse_file_calls(monkeypatch):
 
 
 def test_parser_service_uses_mineru_cloud_backend(monkeypatch):
-    import kb_api.rag_indexer.parser.service as service_mod
-    from kb_api.rag_indexer.parser.common.config import MineruCloudParserConfig
 
     class FakeMineruCloudDocumentParser:
         def __init__(self, config):
@@ -63,7 +63,6 @@ def test_parser_service_rejects_unknown_backend():
 
 
 def test_parser_service_routes_txt_to_local_parser_when_mineru_is_active(tmp_path, monkeypatch):
-    import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
 
     class FailingMineruParser:
         ready = True

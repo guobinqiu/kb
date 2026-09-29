@@ -1,9 +1,9 @@
-from kb_api.auth import hash_password
+from kb_api.api.auth import hash_password
 
 
 def test_workspace_membership_is_independent_of_organization(system):
     client = system["client"]
-    repository = system["repository"]
+    dao = system["dao"]
     owner_headers = system["headers"]
     created = client.post(
         "/api/v1/apps",
@@ -13,8 +13,8 @@ def test_workspace_membership_is_independent_of_organization(system):
     assert created.status_code == 201
     app = created.json()["app"]
     org = created.json()["org"]
-    branch = repository.create_org(app["id"], org["id"], "Branch")
-    member = repository.create_user(
+    branch = dao.create_org(app["id"], org["id"], "Branch")
+    member = dao.create_user(
         org_id=branch["id"], name="branch_member",
         password_hash=hash_password("password123"),
     )
@@ -63,11 +63,11 @@ def test_workspace_membership_is_independent_of_organization(system):
 
 def test_search_uses_authorized_workspaces_not_organization_subtree(system):
     client = system["client"]
-    repository = system["repository"]
+    dao = system["dao"]
     owner_headers = system["headers"]
-    app, org = repository.create_app("Acme", "acme")
-    branch = repository.create_org(app["id"], org["id"], "Branch")
-    user = repository.create_user(
+    app, org = dao.create_app("Acme", "acme")
+    branch = dao.create_org(app["id"], org["id"], "Branch")
+    user = dao.create_user(
         org_id=branch["id"], name="branch_member",
         password_hash=hash_password("password123"),
     )
@@ -86,10 +86,10 @@ def test_search_uses_authorized_workspaces_not_organization_subtree(system):
 
 
 def test_auth_verify_rejects_ungranted_workspace(system):
-    repository = system["repository"]
-    app, org = repository.create_app("Acme", "acme")
-    workspace = repository.create_workspace(app["id"], "Private")
-    user = repository.create_user(
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    workspace = dao.create_workspace(app["id"], "Private")
+    user = dao.create_user(
         org_id=org["id"], name="member",
         password_hash=hash_password("password123"),
     )
@@ -100,16 +100,16 @@ def test_auth_verify_rejects_ungranted_workspace(system):
         "X-Workspace-Id": workspace["id"],
     }
     assert system["client"].get("/api/v1/auth/verify", headers=headers).status_code == 403
-    repository.add_workspace_member(workspace["id"], user_id=user["id"])
+    dao.add_workspace_member(workspace["id"], user_id=user["id"])
     assert system["client"].get("/api/v1/auth/verify", headers=headers).status_code == 200
 
 
 def test_app_cannot_be_deleted_while_it_contains_workspaces(system):
-    repository = system["repository"]
-    app, _ = repository.create_app("Acme", "acme")
-    repository.create_workspace(app["id"], "Policies")
+    dao = system["dao"]
+    app, _ = dao.create_app("Acme", "acme")
+    dao.create_workspace(app["id"], "Policies")
 
     response = system["client"].delete(f"/api/v1/apps/{app['id']}", headers=system["headers"])
 
     assert response.status_code == 409
-    assert repository.get_app(app["id"]) is not None
+    assert dao.get_app(app["id"]) is not None

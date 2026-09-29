@@ -7,6 +7,8 @@ import json
 import httpx
 import pytest
 
+from chat.src.rag.client import RagClient, get_rag_client
+
 
 pytestmark = pytest.mark.unit
 
@@ -239,7 +241,6 @@ async def test_client_5xx_then_recovery_succeeds(install_mock_transport):
 
 @pytest.mark.asyncio
 async def test_client_aclose_releases_resources():
-    from chat.src.rag.client import RagClient
 
     client = RagClient(base_url="http://rag.local")
     await client.aclose()
@@ -248,7 +249,6 @@ async def test_client_aclose_releases_resources():
 
 @pytest.mark.asyncio
 async def test_get_rag_client_singleton_returns_same_instance():
-    from chat.src.rag.client import get_rag_client
 
     a = get_rag_client()
     b = get_rag_client()

@@ -6,7 +6,8 @@ import pytest
 
 from kb_api.rag_indexer.parser.common.config import RetryConfig
 from kb_api.rag_indexer.parser.common.schema import TextBlock
-from kb_api.rag_indexer.parser.common.upstream import UpstreamServiceError
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError
+from kb_api.rag_indexer.parser.providers.mineru.api_parser import MineruApiDocumentParser
 
 pytestmark = pytest.mark.unit
 
@@ -88,7 +89,6 @@ def workflow(structured_content, calls, *, statuses=None):
 
 
 def parser_for(config, handle):
-    from kb_api.rag_indexer.parser.providers.mineru.api_parser import MineruApiDocumentParser
 
     return MineruApiDocumentParser(config, http_client=httpx.Client(transport=httpx.MockTransport(handle)))
 

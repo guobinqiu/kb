@@ -11,7 +11,16 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
+
+from chat.src.config import settings
+from chat.src.infra.retry import (
+    _get_rag_retry,
+    _reset_rag_retry_for_tests,
+    _resolve_rag_policy,
+    rag_retry,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -59,7 +68,6 @@ async def test_rag_retry_retries_on_5xx(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     request = httpx.Request("POST", "http://x/api/v1/rag/search")
     response_503 = httpx.Response(503, request=request)
@@ -89,7 +97,6 @@ async def test_rag_retry_5xx_eventually_succeeds(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     request = httpx.Request("POST", "http://x")
     err = httpx.HTTPStatusError(
@@ -119,7 +126,6 @@ async def test_rag_retry_retries_on_timeout(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     @rag_retry
     async def _fn():
@@ -140,7 +146,6 @@ async def test_rag_retry_retries_on_connect_error(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     @rag_retry
     async def _fn():
@@ -164,7 +169,6 @@ async def test_rag_retry_does_not_retry_on_401(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     request = httpx.Request("POST", "http://x")
     err = httpx.HTTPStatusError(
@@ -189,7 +193,6 @@ async def test_rag_retry_does_not_retry_on_403(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     request = httpx.Request("POST", "http://x")
     err = httpx.HTTPStatusError(
@@ -214,7 +217,6 @@ async def test_rag_retry_does_not_retry_on_422(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     request = httpx.Request("POST", "http://x")
     err = httpx.HTTPStatusError(
@@ -239,7 +241,6 @@ async def test_rag_retry_does_not_retry_on_other_4xx(monkeypatch):
     rag_retry = _try_import_rag_retry()
     counter = _Counter()
 
-    import httpx
 
     request = httpx.Request("POST", "http://x")
     err = httpx.HTTPStatusError(
@@ -307,8 +308,6 @@ def test_rag_retry_resolves_rag_max_retries_from_settings(monkeypatch):
     语义：rag_max_retries = N → max_attempts = N + 1（= 初次 + N 次重试）。
     """
     # 改 settings.rag_max_retries，再调 _resolve_rag_policy 看新结果
-    from chat.src.config import settings
-    from chat.src.infra.retry import _reset_rag_retry_for_tests, _resolve_rag_policy
     monkeypatch.setattr(settings, "rag_max_retries", 4)
     _reset_rag_retry_for_tests()
     p = _resolve_rag_policy()
@@ -317,8 +316,6 @@ def test_rag_retry_resolves_rag_max_retries_from_settings(monkeypatch):
 
 def test_rag_retry_policy_zero_retries_means_one_attempt(monkeypatch):
     """rag_max_retries=0 → max_attempts=1（仅初次，无重试）。"""
-    from chat.src.config import settings
-    from chat.src.infra.retry import _resolve_rag_policy
     monkeypatch.setattr(settings, "rag_max_retries", 0)
     p = _resolve_rag_policy()
     assert p.max_attempts == 1
@@ -326,8 +323,6 @@ def test_rag_retry_policy_zero_retries_means_one_attempt(monkeypatch):
 
 def test_rag_retry_policy_negative_clamps_to_one(monkeypatch):
     """rag_max_retries 为负数时 clamp 到 0 次重试（= 1 次尝试）。"""
-    from chat.src.config import settings
-    from chat.src.infra.retry import _resolve_rag_policy
     monkeypatch.setattr(settings, "rag_max_retries", -3)
     p = _resolve_rag_policy()
     assert p.max_attempts == 1
@@ -338,8 +333,6 @@ async def test_rag_retry_respects_settings_max_retries(monkeypatch):
     """端到端：在受控 max_retries=1 场景下，跑 rag_retry 装饰的函数应恰好尝试 2 次
     （= 初次 + 1 次重试），而不是默认 3 次。
     """
-    from chat.src.config import settings
-    from chat.src.infra.retry import _get_rag_retry, _reset_rag_retry_for_tests, _resolve_rag_policy
 
     monkeypatch.setattr(settings, "rag_max_retries", 1)
     _reset_rag_retry_for_tests()
@@ -354,7 +347,6 @@ def test_rag_retry_proxy_is_decorator():
 
     即：callable，且被调用时接收函数并返回 wrapped 函数。
     """
-    from chat.src.infra.retry import rag_retry
 
     assert callable(rag_retry)
 

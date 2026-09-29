@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
+from uuid import uuid4
+
 import httpx
 
 from kb_api.rag_indexer.common.contracts import ErrorResponse
-from kb_api.rag_indexer.common.tracing import get_trace_id
+
+_task_trace_id: ContextVar[str | None] = ContextVar("task_trace_id", default=None)
+
+
+def get_trace_id() -> str:
+    return _task_trace_id.get() or uuid4().hex
 
 
 class UpstreamServiceError(RuntimeError):
@@ -27,6 +35,10 @@ def _external_error(detail: object) -> str | None:
     if not isinstance(message, str):
         message = detail.get("message")
     return message if isinstance(message, str) else None
+
+
+def retryable_response(response: httpx.Response | None) -> bool:
+    return response is None or 500 <= response.status_code < 600
 
 
 def upstream_error(service: str, exc: Exception, *, retryable: bool = False) -> UpstreamServiceError:

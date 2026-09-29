@@ -1,5 +1,10 @@
 import pytest
 
+import chat.src.agent.llm as llm_mod
+import chat.src.config as config_mod
+from chat.src.agent.nodes import llm as llm_node
+from chat.src.config import settings
+
 
 pytestmark = pytest.mark.unit
 
@@ -16,9 +21,6 @@ def test_create_llm_uses_yaml_behavior_and_environment_connections(monkeypatch, 
     monkeypatch.setenv("RAG_BASE_URL", "http://wrong-rag.example:6000")
     monkeypatch.setenv("LLM_TIMEOUT", "1")
     monkeypatch.setenv("RAG_TIMEOUT", "1")
-
-    import chat.src.agent.llm as llm_mod
-    import chat.src.config as config_mod
 
     config_path = tmp_path / "chat.yaml"
     config_path.write_text(
@@ -63,8 +65,6 @@ def test_create_llm_uses_yaml_behavior_and_environment_connections(monkeypatch, 
 
 
 async def test_semaphore_uses_settings_and_reuses_initialized_instance(monkeypatch):
-    from chat.src.agent.nodes import llm as llm_node
-    from chat.src.config import settings
 
     monkeypatch.setenv("LLM_CONCURRENCY_LIMIT", "99")
     monkeypatch.setattr(settings, "llm_concurrency_limit", 2)

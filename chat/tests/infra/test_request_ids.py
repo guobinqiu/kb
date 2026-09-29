@@ -7,6 +7,10 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from chat.src import main
+from chat.src.api.middleware import limiter
+from chat.src.api.middleware.trace_timeout import add_trace_id_and_timeout
+from chat.src.api.routes import chat
 from chat.src.infra import tracing
 
 
@@ -23,10 +27,6 @@ def test_no_tracking_imports():
 
 @pytest.mark.parametrize("traceparent", [None, "invalid", "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01"])
 async def test_error_and_sse_request_ids(monkeypatch, traceparent):
-    from chat.src import main
-    from chat.src.api.middleware import limiter
-    from chat.src.api.middleware.trace_timeout import add_trace_id_and_timeout
-    from chat.src.api.routes import chat
 
     monkeypatch.setattr(limiter, "enabled", False)
     app = FastAPI(exception_handlers=main.app.exception_handlers)

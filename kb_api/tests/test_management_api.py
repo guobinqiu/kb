@@ -1,4 +1,4 @@
-from kb_api.auth import hash_password
+from kb_api.api.auth import hash_password
 
 
 def _create_app(system, name="Acme"):
@@ -69,10 +69,10 @@ def test_orgs_and_users_crud_are_subtree_scoped(system):
 def test_org_list_is_subtree_scoped_without_granting_workspace_access(system):
     created = _create_app(system)
     org = created["org"]
-    branch = system["repository"].create_org(created["app"]["id"], org["id"], "Branch")
-    leaf = system["repository"].create_org(created["app"]["id"], branch["id"], "Leaf")
-    system["repository"].create_org(created["app"]["id"], org["id"], "Sibling")
-    user = system["repository"].create_user(
+    branch = system["dao"].create_org(created["app"]["id"], org["id"], "Branch")
+    leaf = system["dao"].create_org(created["app"]["id"], branch["id"], "Leaf")
+    system["dao"].create_org(created["app"]["id"], org["id"], "Sibling")
+    user = system["dao"].create_user(
         org_id=branch["id"], name="branch-member", password_hash=hash_password("password-123")
     )
     login = system["client"].post("/api/v1/auth/login", json={"name": user["name"], "password": "password-123"})
@@ -98,7 +98,7 @@ def test_management_put_and_delete(system):
     assert updated_app.status_code == 200
     assert updated_app.json()["name"] == "Renamed"
 
-    user = system["repository"].create_user(
+    user = system["dao"].create_user(
         org_id=org_id, name="member", password_hash=hash_password("password-123")
     )
     updated_user = system["client"].put(
@@ -106,7 +106,7 @@ def test_management_put_and_delete(system):
     )
     assert updated_user.json()["role"] == "admin"
     assert system["client"].delete(f"/api/v1/users/{user['id']}", headers=system["headers"]).status_code == 204
-    assert system["client"].delete(f"/api/v1/apps/{app_id}", headers=system["headers"]).status_code == 204
+    assert system["client"].delete(f"/api/v1/apps/{app_id}", headers=system["headers"]).status_code == 409
 
 
 def test_user_response_uses_name_without_display_name(system):

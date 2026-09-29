@@ -8,7 +8,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
-from kb_api.rag_retriever.core.search import pipeline
+from kb_api.rag_retriever.core import search as pipeline
 
 
 @pytest.fixture

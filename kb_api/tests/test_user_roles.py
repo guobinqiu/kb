@@ -1,4 +1,4 @@
-from kb_api.auth import hash_password
+from kb_api.api.auth import hash_password
 
 
 def _login(system, name, password):
@@ -15,7 +15,7 @@ def _org(system, app_id="acme"):
 
 def test_member_cannot_manage_accounts_but_can_change_own_password(system):
     org = _org(system)
-    member = system["repository"].create_user(org_id=org["id"], name="member", password_hash=hash_password("old-password"))
+    member = system["dao"].create_user(org_id=org["id"], name="member", password_hash=hash_password("old-password"))
     headers = _login(system, "member", "old-password")
     client = system["client"]
     assert client.post("/api/v1/users", json={"org_id": org["id"], "name": "other", "password": "password-123"}, headers=headers).status_code == 403

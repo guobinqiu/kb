@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
@@ -47,24 +47,6 @@ class ParseFileResponse(BaseModel):
     file_size: int | None = Field(default=None, ge=0)
 
 
-class EmbeddingRequest(BaseModel):
-    texts: list[str]
-
-
-class EmbeddingResponse(BaseModel):
-    vectors: list[list[float]]
-
-
-class RerankRequest(BaseModel):
-    query: str
-    documents: list[str]
-    top_k: int
-
-
-class RerankResponse(BaseModel):
-    results: list[dict[str, Any]]
-
-
 class Dense(Protocol):
     ready: bool
 
@@ -98,19 +80,6 @@ class Sparse(Protocol):
         ...
 
     def embed_documents(self, texts: list[str]) -> list[dict[int, float]]:
-        ...
-
-
-class Rerank(Protocol):
-    ready: bool
-
-    def start(self) -> None:
-        ...
-
-    def stop(self) -> None:
-        ...
-
-    def rerank(self, query: str, items: list[dict], top_k: int) -> list[dict]:
         ...
 
 

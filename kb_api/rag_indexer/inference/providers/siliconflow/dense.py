@@ -5,12 +5,11 @@ from threading import Lock
 
 import httpx
 
-from kb_api.rag_indexer.inference.common.config import RetryConfig
-from kb_api.rag_indexer.inference.common.retry import retry_call
-from kb_api.rag_indexer.inference.common.upstream import upstream_error
+from kb_api.rag_indexer.common.config import RetryConfig
+from kb_api.rag_indexer.common.retry import retry_call
+from kb_api.rag_indexer.common.upstream import retryable_response, upstream_error
 
 from .base import SiliconFlowModel
-from .retryable import _retryable_response
 from .schemas import _EmbeddingResponse
 
 
@@ -42,6 +41,8 @@ class SiliconFlowDenseClient(SiliconFlowModel):
             lambda: self._create_dense_embeddings_once(value),
             self.retry,
             operation_name="inference.siliconflow.dense",
+            enforce_deadline=False,
+            logger_name="inference.retry",
         )
 
     def _create_dense_embeddings_once(self, value: str | list[str]) -> list[list[float]]:
@@ -59,7 +60,7 @@ class SiliconFlowDenseClient(SiliconFlowModel):
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            error = upstream_error("inference", exc, retryable=retryable_response(response))
             self._log_call("embedding", started, response, error, dimensions=self.dimensions)
             raise error from exc
         try:
@@ -71,7 +72,7 @@ class SiliconFlowDenseClient(SiliconFlowModel):
             if any(len(row.embedding) != dimensions for row in rows):
                 raise ValueError("Invalid embedding dimensions")
         except (KeyError, TypeError, ValueError) as exc:
-            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            error = upstream_error("inference", exc, retryable=retryable_response(response))
             self._log_call("embedding", started, response, error, dimensions=self.dimensions)
             raise error from exc
         self._log_call("embedding", started, response, dimensions=self.dimensions)

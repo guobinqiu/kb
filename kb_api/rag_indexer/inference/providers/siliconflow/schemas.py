@@ -13,13 +13,3 @@ class _EmbeddingRow(BaseModel):
 class _EmbeddingResponse(BaseModel):
     status: Literal["completed"] = "completed"
     data: list[_EmbeddingRow]
-
-
-class _RerankRow(BaseModel):
-    index: Annotated[int, Field(ge=0)]
-    relevance_score: Annotated[float, Field(allow_inf_nan=False)]
-
-
-class _RerankResponse(BaseModel):
-    status: Literal["completed"] = "completed"
-    results: list[_RerankRow]

@@ -1,19 +1,23 @@
 from types import SimpleNamespace
 
-from kb_api.auth import hash_password
+from fastapi.testclient import TestClient
+
+from kb_api.api.auth import hash_password
+from kb_api.rag_retriever.common.config import SearchConfig
+from kb_api.rag_retriever.service import Retriever
 
 
 def test_search_accepts_multiple_workspace_ids(system):
     client = system["client"]
-    repository = system["repository"]
-    app, org = repository.create_app("Acme", "acme")
-    first = repository.create_workspace(app["id"], "Policies")
-    second = repository.create_workspace(app["id"], "Finance")
-    user = repository.create_user(
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    first = dao.create_workspace(app["id"], "Policies")
+    second = dao.create_workspace(app["id"], "Finance")
+    user = dao.create_user(
         org_id=org["id"], name="member", password_hash=hash_password("password123"),
     )
-    repository.add_workspace_member(first["id"], user_id=user["id"])
-    repository.add_workspace_member(second["id"], user_id=user["id"])
+    dao.add_workspace_member(first["id"], user_id=user["id"])
+    dao.add_workspace_member(second["id"], user_id=user["id"])
     login = client.post("/api/v1/auth/login", json={"name": user["name"], "password": "password123"})
     response = client.post(
         "/api/v1/rag/search",
@@ -29,10 +33,10 @@ def test_search_accepts_multiple_workspace_ids(system):
 
 def test_search_rejects_workspace_outside_membership(system):
     client = system["client"]
-    repository = system["repository"]
-    app, org = repository.create_app("Acme", "acme")
-    workspace = repository.create_workspace(app["id"], "Private")
-    user = repository.create_user(
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    workspace = dao.create_workspace(app["id"], "Private")
+    user = dao.create_user(
         org_id=org["id"], name="member", password_hash=hash_password("password123"),
     )
     login = client.post("/api/v1/auth/login", json={"name": user["name"], "password": "password123"})
@@ -66,3 +70,26 @@ def test_search_config_reports_active_retriever_capabilities(system):
         "rerank_fetch_k": 20,
         "capabilities": {"sparse_vector": True},
     }
+
+
+def test_sparse_search_without_sparse_support_returns_bad_request(system):
+    dao = system["dao"]
+    app, _ = dao.create_app("Acme", "acme")
+    workspace = dao.create_workspace(app["id"], "Policies", creator_id=system["admin"]["id"])
+    application = system["client"].app
+    application.state.retriever = Retriever(
+        SearchConfig(),
+        vector=SimpleNamespace(supports_sparse_vector=lambda: False),
+        inference=SimpleNamespace(rerank=None),
+    )
+    client = TestClient(application, raise_server_exceptions=False)
+
+    response = client.post(
+        "/api/v1/rag/search",
+        headers=system["headers"] | {"X-App-Id": app["app_id"]},
+        json={"query": "policy", "mode": "sparse", "workspace_ids": [workspace["id"]]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "sparse search is not configured"
+    assert response.json()["service"] == "kb_api"

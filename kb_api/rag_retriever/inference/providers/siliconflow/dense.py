@@ -6,11 +6,10 @@ from threading import Lock
 import httpx
 
 from kb_api.rag_retriever.common.config import RetryConfig
-from kb_api.rag_retriever.inference.common.retry import retry_call
-from kb_api.rag_retriever.common.upstream import upstream_error
+from kb_api.rag_retriever.common.retry import retry_call
+from kb_api.rag_retriever.common.upstream import retryable_response, upstream_error
 
 from .base import SiliconFlowModel
-from .retryable import _retryable_response
 from .schemas import _EmbeddingResponse
 
 
@@ -34,17 +33,14 @@ class SiliconFlowDenseClient(SiliconFlowModel):
     def embed_query(self, text: str) -> list[float]:
         return self._create_dense_embeddings(text)[0]
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return self._create_dense_embeddings(texts)
-
-    def _create_dense_embeddings(self, value: str | list[str]) -> list[list[float]]:
+    def _create_dense_embeddings(self, value: str) -> list[list[float]]:
         return retry_call(
             lambda: self._create_dense_embeddings_once(value),
             self.retry,
             operation_name="inference.siliconflow.dense",
         )
 
-    def _create_dense_embeddings_once(self, value: str | list[str]) -> list[list[float]]:
+    def _create_dense_embeddings_once(self, value: str) -> list[list[float]]:
         payload = {"input": value, "model": self.model, "encoding_format": "float"}
         if self.dimensions is not None:
             payload["dimensions"] = self.dimensions
@@ -59,19 +55,18 @@ class SiliconFlowDenseClient(SiliconFlowModel):
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            error = upstream_error("inference", exc, retryable=retryable_response(response))
             self._log_call("embedding", started, response, error, dimensions=self.dimensions)
             raise error from exc
         try:
             rows = sorted(_EmbeddingResponse.model_validate(response.json(), strict=True).data, key=lambda item: item.index)
-            count = 1 if isinstance(value, str) else len(value)
-            if [row.index for row in rows] != list(range(count)):
+            if [row.index for row in rows] != [0]:
                 raise ValueError("Invalid embedding count or indices")
             dimensions = self.dimensions if self.dimensions is not None else (len(rows[0].embedding) if rows else None)
             if any(len(row.embedding) != dimensions for row in rows):
                 raise ValueError("Invalid embedding dimensions")
         except (KeyError, TypeError, ValueError) as exc:
-            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            error = upstream_error("inference", exc, retryable=retryable_response(response))
             self._log_call("embedding", started, response, error, dimensions=self.dimensions)
             raise error from exc
         self._log_call("embedding", started, response, dimensions=self.dimensions)

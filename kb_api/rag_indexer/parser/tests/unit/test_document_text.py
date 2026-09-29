@@ -1,4 +1,7 @@
 from kb_api.rag_indexer.parser.common.text import clean_cjk_spaces, split_paragraphs
+from kb_api.rag_indexer.parser.documents.txt import TxtBlockParser
+from kb_api.rag_indexer.parser.documents.md import MdBlockParser
+from kb_api.rag_indexer.parser.common.schema import TableBlock, TextBlock
 
 
 def test_clean_cjk_spaces_preserves_line_and_paragraph_boundaries():
@@ -6,7 +9,6 @@ def test_clean_cjk_spaces_preserves_line_and_paragraph_boundaries():
 
 
 def test_text_parser_preserves_unpunctuated_paragraphs(tmp_path):
-    from kb_api.rag_indexer.parser.documents.txt import TxtBlockParser
 
     path = tmp_path / "paragraphs.txt"
     path.write_text("首 行\n续 行\n\n末 段", encoding="utf-8")
@@ -22,7 +24,6 @@ def test_split_paragraphs_keeps_blank_line_paragraphs_separate():
 
 
 def test_text_parser_keeps_long_paragraph_whole(tmp_path):
-    from kb_api.rag_indexer.parser.documents.txt import TxtBlockParser
 
     long = "很长的代理制度说明。" * 80
     path = tmp_path / "long.txt"
@@ -31,7 +32,6 @@ def test_text_parser_keeps_long_paragraph_whole(tmp_path):
 
 
 def test_markdown_parser_keeps_headings_and_paragraphs_separate(tmp_path):
-    from kb_api.rag_indexer.parser.documents.md import MdBlockParser
 
     markdown_file = tmp_path / "policy.md"
     markdown_file.write_text(
@@ -53,8 +53,6 @@ def test_markdown_parser_keeps_headings_and_paragraphs_separate(tmp_path):
 
 
 def test_markdown_preserves_code_lists_and_tables_as_structures(tmp_path):
-    from kb_api.rag_indexer.parser.common.schema import TableBlock, TextBlock
-    from kb_api.rag_indexer.parser.documents.md import MdBlockParser
 
     code = "```markdown\n# Not a heading\n\n| A | B |\n| --- | --- |\n| 中 文 | 1 |\n```"
     items = "- First\n  - Nested\n- Second"
@@ -77,7 +75,6 @@ def test_markdown_preserves_code_lists_and_tables_as_structures(tmp_path):
 
 
 def test_markdown_preserves_installation_element_order(tmp_path):
-    from kb_api.rag_indexer.parser.documents.md import MdBlockParser
 
     introduction = "# Deployment\n\nMaterials: /data/deploy\n\nScripts: /data/deploy/hacks"
     installation = "# 1 Preparation\n\n## 1.1 Install driver\n\n```sh\nchmod +x driver.run\n\n./driver.run\n```\n\nDisable Nouveau if necessary\n\n- Create config\n- Restart"
@@ -94,7 +91,6 @@ def test_markdown_preserves_installation_element_order(tmp_path):
 
 
 def test_markdown_nested_code_remains_a_complete_code_element(tmp_path):
-    from kb_api.rag_indexer.parser.documents.md import MdBlockParser
 
     code = "  ```python\n" + "  if ready:\n      print(value)\n" * 12 + "  ```"
     quote = "> ```python\n>     print(value)\n> ```"

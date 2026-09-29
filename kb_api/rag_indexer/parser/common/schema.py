@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from kb_api.rag_indexer.parser.common.contracts import TextKind
+from kb_api.rag_indexer.common.contracts import TextKind
 
 
 @dataclass

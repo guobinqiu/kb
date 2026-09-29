@@ -155,9 +155,12 @@
   },
   "members": {
     "userId": "User ID",
-    "userAccess": "Workspace members",
+    "userAccess": "Members",
+    "orgAccess": "Departments",
+    "emptyOrgAccess": "No department grants",
     "addUser": "Add members",
-    "allEnterpriseUsers": "All enterprise users",
+    "addOrg": "Add department",
+    "allUsers": "All users",
     "searchOrganizations": "Search departments",
     "noMatchingUsers": "No matching users",
     "selected": "Selected ({count})",
@@ -197,6 +200,11 @@
     "purgeConfirm": "Permanently delete empty organization {name}? This cannot be undone.",
     "empty": "No organizations"
   },
+  "workspaceScope": {
+    "label": "Workspaces",
+    "empty": "No accessible workspaces",
+    "required": "Select at least one workspace"
+  },
   "workspace": {
     "parent": "Parent organization",
     "searchScope": "Search scope: this organization and its child organizations",
@@ -232,6 +240,7 @@
     "org": "Organization",
     "selectOrg": "Select an organization",
     "choose": "Drop files here or click to browse",
+    "supportedTypes": "Supported: {types}",
     "hint": "Select multiple files; uploads belong to the current workspace",
     "upload": "Upload files",
     "uploading": "Uploading",

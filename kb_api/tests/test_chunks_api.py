@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from kb_api.api.routes.chunks import router
-from kb_api.auth import current_user
+from kb_api.api.auth import current_user
 
 
 class FakeChunkVector:
@@ -40,7 +40,7 @@ class FakeChunkVector:
         }
 
 
-class FakeRepository:
+class FakeDAO:
     def __init__(self):
         self.workspace = {"id": "workspace-1", "app_id": "app-1"}
         self.allowed = True
@@ -70,12 +70,12 @@ class FakeRepository:
 def make_client():
     app = FastAPI()
     app.include_router(router)
-    repository = FakeRepository()
+    dao = FakeDAO()
     vector = FakeChunkVector()
-    app.state.repository = repository
+    app.state.dao = dao
     app.state.retriever = SimpleNamespace(vector=vector)
     app.dependency_overrides[current_user] = lambda: {"id": "user-1", "role": "member"}
-    return TestClient(app), repository, vector
+    return TestClient(app), dao, vector
 
 
 def test_workspace_chunks_use_app_collection_and_workspace_filter():
@@ -108,17 +108,17 @@ def test_workspace_chunks_use_app_collection_and_workspace_filter():
 
 
 def test_workspace_chunks_hide_missing_or_forbidden_workspace():
-    client, repository, vector = make_client()
+    client, dao, vector = make_client()
 
     assert client.get("/api/v1/workspaces/missing/chunks").status_code == 404
-    repository.allowed = False
+    dao.allowed = False
     assert client.get("/api/v1/workspaces/workspace-1/chunks").status_code == 404
     assert vector.calls == []
 
 
 def test_workspace_chunks_return_empty_without_matching_files():
-    client, repository, vector = make_client()
-    repository.files = []
+    client, dao, vector = make_client()
+    dao.files = []
 
     response = client.get("/api/v1/workspaces/workspace-1/chunks")
 

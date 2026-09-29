@@ -2,7 +2,7 @@
   <section class="workspace-panel organizations-view" v-loading="loading">
     <SectionHeader :title="t('organizations.title')" :description="selectedOrg?.name || t('organizations.empty')">
       <template #actions>
-        <el-button v-if="canManage && selectedOrg && !isOrgInactive(selectedOrg.id)" type="primary" :icon="Plus" @click="openCreate">{{ t('organizations.createChild') }}</el-button>
+        <el-button :disabled="!canManage || !selectedOrg || isOrgInactive(selectedOrg.id)" type="primary" :icon="Plus" @click="openCreate">{{ t('organizations.createChild') }}</el-button>
       </template>
     </SectionHeader>
 
@@ -12,11 +12,11 @@
         <div><span>{{ t('organizations.parent') }}</span><strong>{{ parentOrg?.name || '-' }}</strong></div>
         <div><span>{{ t('users.status') }}</span><strong>{{ selectedOrg.deleted_at ? t('users.disabled') : t('users.active') }}</strong></div>
       </div>
-      <div v-if="canManage" class="organization-actions">
-        <el-button v-if="!isOrgInactive(selectedOrg.id)" :icon="Edit" @click="openEdit(selectedOrg)">{{ t('common.edit') }}</el-button>
-        <el-button v-if="selectedOrg.deleted_at" :icon="RefreshLeft" :loading="deletingId === selectedOrg.id" @click="restoreOrg(selectedOrg)">{{ t('common.restore') }}</el-button>
-        <el-button v-else-if="selectedOrg.parent_id && !isOrgInactive(selectedOrg.parent_id)" :icon="Delete" type="danger" plain :disabled="selectedOrg.id === currentUser?.org_id" :loading="deletingId === selectedOrg.id" @click="deleteOrg(selectedOrg)">{{ t('common.disable') }}</el-button>
-        <el-button v-if="selectedOrg.deleted_at && selectedOrg.parent_id" :icon="Delete" type="danger" plain :loading="deletingId === selectedOrg.id" @click="purgeEmptyOrg(selectedOrg)">{{ t('common.deletePermanently') }}</el-button>
+      <div class="organization-actions">
+        <el-button :disabled="!canManage || isOrgInactive(selectedOrg.id)" :icon="Edit" @click="openEdit(selectedOrg)">{{ t('common.edit') }}</el-button>
+        <el-button v-if="selectedOrg.deleted_at" :disabled="!canManage" :icon="RefreshLeft" :loading="deletingId === selectedOrg.id" @click="restoreOrg(selectedOrg)">{{ t('common.restore') }}</el-button>
+        <el-button v-else :icon="Delete" type="danger" plain :disabled="!canManage || !selectedOrg.parent_id || isOrgInactive(selectedOrg.parent_id) || selectedOrg.id === currentUser?.org_id" :loading="deletingId === selectedOrg.id" @click="deleteOrg(selectedOrg)">{{ t('common.disable') }}</el-button>
+        <el-button :disabled="!canManage || !selectedOrg.deleted_at || !selectedOrg.parent_id" :icon="Delete" type="danger" plain :loading="deletingId === selectedOrg.id" @click="purgeEmptyOrg(selectedOrg)">{{ t('common.deletePermanently') }}</el-button>
       </div>
     </div>
 

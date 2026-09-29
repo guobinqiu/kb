@@ -9,15 +9,21 @@
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
+
+import chat.src.agent.nodes.llm as llm_mod
+import chat.src.api.auth as auth_mod
+from chat.src.agent.graphs.chat import build_chat_graph
+from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
+from chat.src.api.auth import AppCredential
 
 
 @pytest.mark.asyncio
 @pytest.mark.unit
 async def test_build_chat_graph_builds_successfully():
     """build_chat_graph 必须接受 checkpointer 参数并返回编译图。"""
-    from langgraph.checkpoint.memory import MemorySaver
 
-    from chat.src.agent.graphs.chat import build_chat_graph
 
     graph = build_chat_graph(MemorySaver())
     assert graph is not None
@@ -27,8 +33,6 @@ async def test_build_chat_graph_builds_successfully():
 @pytest.mark.integration
 async def test_chat_graph_prefetch_then_llm_ends(monkeypatch):
     """组件协作：rag_prefetch → llm → END，外部客户端使用 mock。"""
-    from langchain_core.messages import AIMessage, HumanMessage
-    from langgraph.checkpoint.memory import MemorySaver
 
     # Mock RagClient
     class _Doc:
@@ -50,8 +54,6 @@ async def test_chat_graph_prefetch_then_llm_ends(monkeypatch):
 
     monkeypatch.setattr("chat.src.rag.client.get_rag_client", lambda: _FakeClient())
 
-    from chat.src.api.auth import AppCredential
-    import chat.src.api.auth as auth_mod
 
     monkeypatch.setattr(
         auth_mod,
@@ -64,14 +66,11 @@ async def test_chat_graph_prefetch_then_llm_ends(monkeypatch):
         async def astream(self, messages):
             # Verify rag_context was injected
             assert any("参考资料" in str(m.content) for m in messages if hasattr(m, "content"))
-            from langchain_core.messages import AIMessageChunk
             yield AIMessageChunk(content="根据政策，7天内可退款")
 
     # Patch get_llm
-    import chat.src.agent.nodes.llm as llm_mod
     monkeypatch.setattr(llm_mod, "get_llm", lambda: _FakeLLM())
 
-    from chat.src.agent.graphs.chat import build_chat_graph
     graph = build_chat_graph(MemorySaver())
 
     result = await graph.ainvoke(
@@ -90,7 +89,6 @@ async def test_chat_graph_prefetch_then_llm_ends(monkeypatch):
 @pytest.mark.unit
 async def test_rag_prefetch_empty_on_no_messages(monkeypatch):
     """空消息时 rag_prefetch 返回空 rag_context。"""
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
     result = await rag_prefetch_node({"messages": []})
     assert result["rag_context"] == ""
 
@@ -99,9 +97,7 @@ async def test_rag_prefetch_empty_on_no_messages(monkeypatch):
 @pytest.mark.unit
 async def test_rag_prefetch_injects_context(monkeypatch):
     """rag_prefetch 正确调用 client.search 并格式化结果。"""
-    from langchain_core.messages import HumanMessage
 
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
 
     class _Doc:
         def __init__(self, content):
@@ -122,8 +118,6 @@ async def test_rag_prefetch_injects_context(monkeypatch):
 
     monkeypatch.setattr("chat.src.rag.client.get_rag_client", lambda: _C())
 
-    from chat.src.api.auth import AppCredential
-    import chat.src.api.auth as auth_mod
 
     monkeypatch.setattr(
         auth_mod,

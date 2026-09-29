@@ -122,6 +122,6 @@ class FileUploadWorkspaceRequest(StrictModel):
 
 
 class FileUploadWorkspaceComplete(StrictModel):
-    object_key: str = Field(min_length=1)
+    s3_url: str = Field(min_length=1)
     filename: str = Field(min_length=1, max_length=1024)
     content_type: str | None = Field(default=None, max_length=255)

@@ -1,19 +1,23 @@
 import pytest
+from kb_api.rag_indexer.parser.service import ParserService
+from kb_api.rag_indexer.parser.common.config import ParserConfig
+from kb_api.rag_indexer.parser.common.schema import TextBlock
+from kb_api.rag_indexer.parser.common.schema import TableBlock
+import json
+from kb_api.rag_indexer.parser.common.schema import FormulaBlock
+from kb_api.rag_indexer.parser.providers.mineru.normalizer import read_content_list_blocks
 
 
 pytestmark = pytest.mark.integration
 
 
 def _parse_file(filepath: str, original_filename: str | None = None, parser=None):
-    from kb_api.rag_indexer.parser.service import ParserService
-    from kb_api.rag_indexer.parser.common.config import ParserConfig
 
     parser_service = ParserService(parser or ParserConfig())
     return parser_service.parse_file(filepath, original_filename=original_filename)
 
 
 def test_parse_txt_file_returns_text_blocks(test_txt_path):
-    from kb_api.rag_indexer.parser.common.schema import TextBlock
 
     blocks = _parse_file(test_txt_path)
 
@@ -23,7 +27,6 @@ def test_parse_txt_file_returns_text_blocks(test_txt_path):
 
 
 def test_parse_md_file_returns_text_and_table_blocks(tmp_path):
-    from kb_api.rag_indexer.parser.common.schema import TableBlock, TextBlock
 
     md_file = tmp_path / "table.md"
     md_file.write_text(
@@ -55,9 +58,6 @@ def test_parse_invalid_files_raise_clear_errors(tmp_path):
 
 
 def test_mineru_content_list_returns_clean_blocks(tmp_path):
-    import json
-    from kb_api.rag_indexer.parser.common.schema import FormulaBlock, TableBlock
-    from kb_api.rag_indexer.parser.providers.mineru.normalizer import read_content_list_blocks
 
     output_dir = tmp_path / "mineru-output"
     output_dir.mkdir()

@@ -1,18 +1,18 @@
 # API 文档
 
-本文列出后端 HTTP 接口。外部系统集成通常只需要鉴权、索引和搜索接口；管理和本地对象存储辅助接口用于运维和管理台。
+本文列出后端 HTTP 接口。外部系统集成通常只需要鉴权、workspace 文件上传和搜索接口；索引由 MQ 异步执行，Indexer 不提供 HTTP 接口。
 
-公开业务路径为 `/api/v1/rag/*` 和 `/api/v1/llm/*`，RAG 管理接口为 `/api/rag/*`。
+检索路径为 `/api/v1/rag/search` 和 `/api/v1/rag/config`，对话路径为 `/api/v1/llm/*`，文件与分片管理使用 KB API 的 `/api/v1/workspaces/*`。旧 `/api/rag/*` 及其他 Indexer HTTP 路径已移除。
 
 ## 健康检查与网关
 
-RAG Indexer 使用 `GET /health` 检查存活、`GET /ready` 检查就绪，均无需业务鉴权。网关 `http://localhost:5175/health` 和 `http://localhost:5175/ready` 转发到 RAG Indexer；`/ready` 检查进程内 Parser、文档 Inference 和向量库。Retriever 随 KB API 启动，由 KB API 负责健康检查。Chat 的 `/health` 仅供 Compose 内部访问。
+网关 `http://localhost:5175/health` 转发到 KB API 的 `GET /health`，无需业务鉴权。旧 `/ready` 已移除。RAG Indexer 不监听 HTTP 端口，其容器健康检查仅确认 PID 1 存活，MQ 消费状态通过 RabbitMQ 的消费者数量检查。Chat 的 `/health` 仅供 Compose 内部访问。
 
 Parser、文档 Inference 和 Retriever 不提供独立 HTTP API。公开 `/api/v1/rag/search` 由 KB API 接收；KB API 根据工作区授权计算可检索的 `workspace_ids`，再传给进程内 Retriever。
 
 ## 鉴权
 
-外部系统调用业务接口时，每个请求都使用 KB API 生成的 Bearer API key。用户登录后使用 User JWT。Nginx 通过 KB API 统一校验身份，并把可信身份传给 RAG 和 Chat；RAG 和 Chat 不查询应用表，也不自行校验 API key。认证子请求返回的内部身份头包括 `X-App-Id`、`X-User-Id` 和 `X-Org-Id`；客户端不得用这些头声明身份。
+外部系统调用业务接口时，每个请求都使用 KB API 生成的 Bearer API key。用户登录后使用 User JWT。Nginx 通过 KB API 统一校验检索与对话请求身份，并把可信身份传给 KB API 和 Chat；Indexer 仅从 MQ 消费任务，不接收 HTTP 鉴权请求。认证子请求返回的内部身份头包括 `X-App-Id`、`X-User-Id` 和 `X-Org-Id`；客户端不得用这些头声明身份。
 
 请求头：
 
@@ -256,6 +256,8 @@ Content-Type: application/json
 
 WebUI 使用三步直传流程。请求均使用 User JWT 鉴权。
 
+支持 `.pdf`、`.doc`、`.docx`、`.xls`、`.xlsx`、`.ppt`、`.pptx`、`.txt`、`.md`，后缀不区分大小写。申请上传地址和完成上传均会校验后缀；不支持的类型返回 HTTP 415，响应使用统一错误结构。该校验不验证文件内容是否与后缀一致。
+
 ### 申请 PUT 地址
 
 ```http
@@ -272,11 +274,11 @@ Content-Type: application/json
 }
 ```
 
-替换文件时额外传 `file_id`。响应提供 `file_id`、`object_key`、`content_type` 和 `upload_url`。`upload_url` 有效期为 15 分钟。
+替换文件时额外传 `file_id`。响应提供 `file_id`、`s3_url`、`content_type` 和 `upload_url`。`upload_url` 有效期为 15 分钟。
 
 ### 浏览器直传 MinIO
 
-对 `upload_url` 发起 `PUT`，请求体为原始文件字节，`Content-Type` 使用申请响应里的 `content_type`。文件内容不会经过 KB API。
+对 `upload_url` 发起 `PUT`，请求体为原始文件字节，`Content-Type` 使用申请响应里的 `content_type`。上传请求不经过 KB API。
 
 ### 完成上传并索引
 
@@ -287,39 +289,17 @@ Content-Type: application/json
 
 ```json
 {
-  "object_key": "uploads/app-id/workspace-id/file-id/version/guide.pdf",
+  "s3_url": "s3://kb/uploads/app-id/workspace-id/file-id/version/guide.pdf",
   "filename": "guide.pdf",
   "content_type": "application/pdf"
 }
 ```
 
-KB API 会确认对象存在，再登记文件并发布索引任务。替换时 `file_id` 保持不变。浏览器必须能访问 `KB_MINIO_PUBLIC_URL` 指定的 MinIO 地址。
+KB API 会确认对象存在，分块读取对象计算 SHA-256，保存在文件记录的 `checksum` 字段，再登记文件并发布索引任务。替换时 `file_id` 保持不变；同一文件内容未变且已成功索引时，仅更新文件信息，不重复发布索引任务。索引失败后提交相同内容仍会重试索引，不同文件之间不做内容去重。浏览器必须能访问 `KB_MINIO_PUBLIC_URL` 指定的 MinIO 地址。
 
 ### 查询文档分片
 
 管理台通过 `GET /api/v1/workspaces/{workspace_id}/chunks` 分页查看该知识库的分片。可选参数 `limit` 范围为 `1..200`，`cursor` 用于继续读取，`file_ids` 可重复传入以筛选文件。请求必须拥有该工作区的访问权限。
-
-### 生成短期下载地址
-
-```http
-POST /api/rag/presign
-Content-Type: application/json
-```
-
-另提供 `POST /api/v1/rag/presign`，请求和响应相同，使用应用 Bearer API key，只允许为当前应用 workspace 下的对象生成下载地址，可作为上述模板的请求目标。
-
-| 字段 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `s3_url` | string | 是 | - | 稳定对象存储地址 |
-| `expires_in` | int | 否 | `3600` | 签名有效期，单位秒，范围 `60..86400` |
-
-响应：
-
-```json
-{
-  "presigned_url": "http://minio:9000/rag/uploads/example.pdf?..."
-}
-```
 
 ## 管理与诊断
 
@@ -331,34 +311,7 @@ GET /api/v1/workspaces/{workspace_id}/files
 
 列出指定 workspace 的文件及索引状态。KB API 先校验 workspace 访问权限；文件记录不提供 org 归属字段。
 
-### 向量数据列表
-
-```http
-POST /api/rag/chunks
-```
-
-请求：
-
-```json
-{
-  "limit": 50,
-  "cursor": null,
-  "app_id": "imsdom",
-  "file_ids": ["550e8400-e29b-41d4-a716-446655440000"]
-}
-```
-
-直接分页查看向量库里的 chunk 数据。`file_ids` 不传时查看全库 chunk。
-
-### 查看向量本体
-
-```http
-GET /api/v1/workspaces/{workspace_id}/chunks/{chunk_id}/dense-vector
-```
-
-管理台按行查看指定 workspace 中当前 chunk 的向量本体。KB API 先校验 workspace 权限；列表接口不默认返回向量本体，避免分页响应过大。
-
-`dense-vector` 返回 dense embedding 数组。
+分片分页使用上述 `GET /api/v1/workspaces/{workspace_id}/chunks`。旧 `/api/rag/chunks`、`/api/rag/presign` 和 `/api/v1/rag/presign` 已移除；当前 KB API 不提供 `dense-vector` 接口，分片列表不返回 embedding 数组。
 
 ### 删除 Workspace 文件
 

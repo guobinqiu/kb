@@ -7,12 +7,12 @@ import pytest
 from kb_api.rag_indexer.parser.common.config import MineruApiServerConfig, MineruCloudParserConfig, ParserConfig
 from kb_api.rag_indexer.parser.providers.mineru.api_parser import MineruApiDocumentParser
 from kb_api.rag_indexer.parser.service import ParserService
+import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
 
 
 @pytest.mark.parametrize("suffix", [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"])
 @pytest.mark.parametrize("active", ["mineru", "mineru_cloud"])
 def test_office_routes_to_mineru_flash(tmp_path, monkeypatch, suffix, active):
-    import kb_api.rag_indexer.parser.providers.mineru.api_parser as api_mod
 
     class OfficeParser:
         ready = False

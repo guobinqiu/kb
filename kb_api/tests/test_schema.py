@@ -1,10 +1,8 @@
-import inspect
 import os
 
 import psycopg
 from psycopg.rows import dict_row
 
-from kb_api.repository import PostgresRepository
 
 
 def _connect():
@@ -33,11 +31,11 @@ def test_schema_has_workspace_tables_and_file_workspace_scope():
     assert _columns("apps") == {"id", "app_id", "name", "api_key", "created_at", "updated_at"}
     assert _columns("orgs") == {"id", "app_id", "parent_id", "name", "created_at", "updated_at", "deleted_at"}
     assert _columns("users") == {"id", "org_id", "name", "password_hash", "role", "deleted_at", "created_at", "updated_at"}
-    assert _columns("workspaces") == {"id", "app_id", "name", "created_at", "updated_at"}
+    assert _columns("workspaces") == {"id", "app_id", "name", "created_by", "created_at", "updated_at"}
     assert _columns("workspace_user") == {"id", "workspace_id", "user_id", "role"}
     assert _columns("workspace_org") == {"id", "workspace_id", "org_id", "role"}
     assert _columns("files") == {
-        "id", "workspace_id", "filename", "object_key", "s3_url", "mime_type", "size_bytes",
+        "id", "workspace_id", "filename", "s3_url", "mime_type", "size_bytes",
         "checksum", "status", "error", "created_by", "created_at", "updated_at", "indexed_at", "deleted_at",
     }
 
@@ -100,11 +98,3 @@ def test_schema_keeps_owner_outside_organization_tree():
     assert nodes is None
     assert owner_check is not None
     assert root_index is not None
-
-
-def test_repository_org_listing_does_not_walk_ancestors():
-    source = inspect.getsource(PostgresRepository)
-    list_orgs_source = inspect.getsource(PostgresRepository.list_orgs)
-
-    assert "def _ancestors_cte" not in source
-    assert "ancestors" not in list_orgs_source

@@ -11,6 +11,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from kb_api.rag_indexer.core.loader import load_app_config
+from kb_api.rag_indexer.core.loader import load_config_file
+from kb_api.rag_indexer.core.scope import app_collection
+from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
+from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
+from PIL import Image, ImageDraw, ImageFont
+from qdrant_client import QdrantClient
+from kb_api.rag_indexer.clients.vector.milvus import _connection_uri
+from pymilvus import MilvusClient
+
 
 def _test_app_id_for_node(node) -> str:
     return f"test_{uuid.uuid4().hex}"
@@ -75,7 +85,6 @@ def uploaded_chunks(initialized_vector, test_txt_path):
 @pytest.fixture
 def initialized_vector(request, vector_test_env):
     """VectorClient module after explicit startup initialization."""
-    from kb_api.rag_indexer.core.loader import load_app_config
 
     config = load_app_config()
     yield from _initialized_vector_for_config(config, _test_app_id_for_node(request.node))
@@ -83,7 +92,6 @@ def initialized_vector(request, vector_test_env):
 
 @pytest.fixture
 def initialized_qdrant_vector(request, vector_test_env):
-    from kb_api.rag_indexer.core.loader import load_config_file
 
     config = load_config_file(SERVICE_DIR / "tests" / "fixtures" / "qdrant-test.yaml")
     yield from _initialized_vector_for_config(config, _test_app_id_for_node(request.node))
@@ -91,16 +99,12 @@ def initialized_qdrant_vector(request, vector_test_env):
 
 @pytest.fixture
 def initialized_milvus_vector(request, vector_test_env):
-    from kb_api.rag_indexer.core.loader import load_config_file
 
     config = load_config_file(SERVICE_DIR / "tests" / "fixtures" / "milvus-test.yaml")
     yield from _initialized_vector_for_config(config, _test_app_id_for_node(request.node))
 
 
 def _initialized_vector_for_config(config, app_id: str):
-    from kb_api.rag_indexer.core.scope import app_collection
-    from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
-    from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
 
     vector_config = config.services.vector
     vector_key = vector_config.provider
@@ -146,17 +150,6 @@ def _initialized_vector_for_config(config, app_id: str):
         _drop_vector_collection(vector_key, app_id, endpoint=endpoint)
 
 
-class DeterministicReranker:
-    """Deterministic reranker: scores (query, content) pairs by content length.
-
-    Longer content gets a higher score. Replaces ``BAAI/bge-reranker-base``
-    so tests never download or load the real CrossEncoder model.
-    """
-
-    def score(self, pairs):
-        return [float(len(p[1])) for p in pairs]
-
-
 class DeterministicDense:
     vector_size = 4
 
@@ -185,27 +178,9 @@ class DeterministicDense:
         ]
 
 
-class CrossEncoderLikeReranker:
-    """Mimics sentence-transformers 5.x CrossEncoder: has predict(), no score().
-
-    sentence-transformers 5.6.1 renamed ``CrossEncoder.score()`` to
-    ``CrossEncoder.predict()``. ``rerank.py`` must call ``predict`` on this
-    API shape; calling ``score`` would raise AttributeError → 500.
-    """
-
-    def __init__(self):
-        self.calls = []
-
-    def predict(self, pairs):
-        self.calls.append(pairs)
-        # Longer content → higher score (deterministic)
-        return [float(len(p[1])) for p in pairs]
-
-
 @pytest.fixture
 def test_img_path(tmp_path):
     """Create a PNG image with visible Chinese text for image parsing tests."""
-    from PIL import Image, ImageDraw, ImageFont
 
     try:
         font = ImageFont.truetype("/System/Library/Fonts/STHeiti Medium.ttc", 18)
@@ -222,8 +197,6 @@ def test_img_path(tmp_path):
 
 def _drop_qdrant_collection(url: str, collection_name: str) -> None:
     try:
-        from qdrant_client import QdrantClient
-
         client = QdrantClient(url=url, check_compatibility=False, api_key=os.getenv("QDRANT_API_KEY"))
         if client.collection_exists(collection_name):
             client.delete_collection(collection_name)
@@ -254,8 +227,6 @@ def _qdrant_available(url: str) -> bool:
 
 
 def _make_qdrant_client(url: str):
-    from qdrant_client import QdrantClient
-
     return QdrantClient(url=url, timeout=2, api_key=os.getenv("QDRANT_API_KEY"))
 
 
@@ -275,9 +246,6 @@ def _is_qdrant_connection_error(exc: Exception) -> bool:
 
 def _drop_milvus_collection(uri: str, collection_name: str) -> None:
     try:
-        from kb_api.rag_indexer.clients.vector.milvus import _connection_uri
-        from pymilvus import MilvusClient
-
         client = MilvusClient(uri=_connection_uri(uri), token=os.getenv("MILVUS_TOKEN", ""))
         if client.has_collection(collection_name):
             client.drop_collection(collection_name)
@@ -308,8 +276,6 @@ def _milvus_available(uri: str) -> bool:
 
 
 def _make_milvus_client(uri: str):
-    from kb_api.rag_indexer.clients.vector.milvus import _connection_uri
-    from pymilvus import MilvusClient
 
     return MilvusClient(uri=_connection_uri(uri), timeout=2, token=os.getenv("MILVUS_TOKEN", ""))
 

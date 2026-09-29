@@ -1,4 +1,4 @@
-from kb_api.queue import INDEX_TASK_QUEUE
+from kb_api.api.services.rabbitmq import INDEX_TASK_QUEUE
 from kb_api.tests.helpers import upload_file
 
 

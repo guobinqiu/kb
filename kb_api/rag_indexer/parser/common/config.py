@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass(frozen=True)
-class RetryConfig:
-    max_attempts: int = 3
-    interval_seconds: float = 0.5
+from kb_api.rag_indexer.common.config import RetryConfig
 
 
 @dataclass(frozen=True)

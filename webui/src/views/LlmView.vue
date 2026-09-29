@@ -2,7 +2,7 @@
   <section class="workspace-panel llm-view">
     <div v-if="!currentApp" class="trace-empty">{{ t('upload.selectApp') }}</div>
     <template v-else>
-      <p>{{ t('llm.desc') }}</p>
+      <WorkspaceScope v-model="workspaceIds" :app-id="currentAppId" :disabled="streaming" />
       <div class="llm-toolbar">
         <div>
           <p>{{ t('llm.thread') }}: <span class="thread-id">{{ threadId }}</span></p>
@@ -28,7 +28,7 @@
           :placeholder="t('llm.placeholder')"
           @keydown.enter.exact.prevent="sendMessage"
         />
-        <el-button type="primary" native-type="submit" :loading="streaming" :disabled="!currentApp || !input.trim() || streaming">
+        <el-button type="primary" native-type="submit" :loading="streaming" :disabled="!currentApp || !workspaceIds.length || !input.trim() || streaming">
           {{ streaming ? t('llm.responding') : t('llm.send') }}
         </el-button>
       </form>
@@ -45,6 +45,7 @@ import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useLlmChatStore } from '../stores/llmChat'
 import { errorMessage, indexErrorMessage, showToast } from '../utils/toast'
+import WorkspaceScope from '../components/WorkspaceScope.vue'
 
 const API_PATH = '/api/v1/llm/chat/stream'
 const { t } = useI18n()
@@ -63,6 +64,7 @@ const threadId = computed(() => session.value.threadId)
 const messages = computed(() => session.value.messages)
 const input = ref('')
 const streaming = ref(false)
+const workspaceIds = ref([])
 let activeController = null
 
 function newConversation() {
@@ -81,20 +83,7 @@ async function requestHeaders() {
 
 async function sendMessage() {
   const content = input.value.trim()
-  if (!content || streaming.value || !currentApp.value) return
-
-  let workspaceIds
-  try {
-    const workspaces = await appsStore.fetchWorkspaces(currentAppId.value)
-    workspaceIds = workspaces.map(workspace => workspace.id)
-    if (!workspaceIds.length) {
-      showToast('error', t('llm.noWorkspaces'))
-      return
-    }
-  } catch (err) {
-    showToast('error', errorMessage(err, t('llm.requestFailed')))
-    return
-  }
+  if (!content || streaming.value || !currentApp.value || !workspaceIds.value.length) return
 
   const messageList = session.value.messages
   const controller = new AbortController()
@@ -105,7 +94,7 @@ async function sendMessage() {
   const assistantIndex = messageList.length - 1
   streaming.value = true
 
-  const body = JSON.stringify({ thread_id: threadId.value, message: content, workspace_ids: workspaceIds })
+  const body = JSON.stringify({ thread_id: threadId.value, message: content, workspace_ids: [...workspaceIds.value] })
   try {
     const res = await fetch(API_PATH, {
       method: 'POST',

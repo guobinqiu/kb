@@ -1,18 +1,17 @@
 import pytest
+import yaml
+from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
 
 pytestmark = pytest.mark.unit
 
 
 def _parser_yaml(raw):
-    import yaml
 
     return yaml.safe_dump(raw)
 
 
 def test_load_parser_config_selects_enabled_mineru(tmp_path):
-    import yaml
-    from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
     path = tmp_path / "parser.yaml"
     path.write_text(
@@ -42,8 +41,6 @@ def test_load_parser_config_selects_enabled_mineru(tmp_path):
 
 
 def test_load_parser_config_rejects_no_enabled_backend(tmp_path):
-    import yaml
-    from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
     path = tmp_path / "parser.yaml"
     path.write_text(
@@ -61,8 +58,6 @@ def test_load_parser_config_rejects_no_enabled_backend(tmp_path):
 
 
 def test_load_parser_config_rejects_multiple_enabled_backends(tmp_path):
-    import yaml
-    from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
     path = tmp_path / "parser.yaml"
     path.write_text(
@@ -80,7 +75,6 @@ def test_load_parser_config_rejects_multiple_enabled_backends(tmp_path):
 
 
 def test_load_parser_config_uses_rag_config_file(tmp_path, monkeypatch):
-    from kb_api.rag_indexer.parser.config_loader import load_parser_config
 
     path = tmp_path / "rag.yaml"
     path.write_text(

@@ -18,10 +18,6 @@ STABLE_CHUNK_NAMESPACE = uuid.UUID("a7c76a79-33f4-4df8-b6f8-f77553a89c11")
 logger = logging.getLogger("rag_indexer")
 
 
-def create_file_id() -> str:
-    return str(uuid.uuid4())
-
-
 def stable_chunk_id(app_id: str, file_id: str, chunk_index: int) -> str:
     if chunk_index < 0:
         raise ValueError("chunk_index must be greater than or equal to 0")

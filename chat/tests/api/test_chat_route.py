@@ -13,10 +13,15 @@ from hashlib import sha256
 
 import httpx
 import pytest
+from langchain_core.messages import AIMessage
 from openai import APITimeoutError
+from pydantic import ValidationError
 
 from starlette.requests import Request
 
+import chat.src.api.auth as auth_mod
+from chat.src.api.auth import AppCredential, get_current_authorization
+from chat.src.api.middleware import limiter
 from chat.src.api.routes.chat import ChatRequest, chat_stream
 
 
@@ -31,7 +36,6 @@ class ServiceError(RuntimeError):
 
 @pytest.fixture
 def route_request(monkeypatch):
-    from chat.src.api.middleware import limiter
 
     monkeypatch.setattr(limiter, "enabled", False)
     return Request({
@@ -115,7 +119,6 @@ async def test_chat_stream_sets_required_sse_headers(route_request):
 async def test_chat_stream_emits_token_done_events(route_request, monkeypatch):
     """SSE 序列化单测：graph 应推 token* → done 序列。"""
 
-    from langchain_core.messages import AIMessage
     written: list = []
     final_state = {"messages": [AIMessage(content="综合回复：退款 7 天")]}
 
@@ -160,8 +163,6 @@ async def test_chat_stream_emits_token_done_events(route_request, monkeypatch):
 
 
 async def test_chat_stream_passes_workspace_scope_in_same_app_thread(route_request, monkeypatch):
-    import chat.src.api.auth as auth_mod
-    from chat.src.api.auth import AppCredential
 
     monkeypatch.setattr(auth_mod, "get_current_credential", lambda: AppCredential(app_id="acme", api_key=""))
     observed = []
@@ -202,14 +203,12 @@ async def test_chat_stream_isolates_same_thread_for_different_users(route_reques
 
 
 def test_chat_request_rejects_empty_workspace_ids():
-    from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         ChatRequest(message="hi", thread_id="t1", workspace_ids=[])
 
 
 async def test_chat_stream_forwards_authorization_during_graph_run(route_request):
-    from chat.src.api.auth import get_current_authorization
 
     route_request.scope["headers"] = [
         (b"authorization", b"Bearer user-token"),

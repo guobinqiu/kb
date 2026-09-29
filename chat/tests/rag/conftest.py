@@ -11,6 +11,7 @@ all AsyncClient construction inside rag.client, regardless of import style:
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import httpx
 import pytest
@@ -80,7 +81,6 @@ def fake_search_result():
             from chat.src.rag.client import RagResult  # type: ignore
         except Exception:
             # Build a plain dataclass-compatible shim with the same fields
-            from dataclasses import dataclass, field
             @dataclass
             class _R:
                 success: bool = True

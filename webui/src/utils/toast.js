@@ -4,7 +4,7 @@ export function showToast(type, text) {
   ElMessage({
     type,
     message: text,
-    duration: type === 'error' ? 0 : 3200,
+    duration: 3000,
     showClose: type === 'error',
   })
 }

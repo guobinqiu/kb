@@ -1,4 +1,5 @@
 import pytest
+from kb_api.rag_indexer.tests import conftest
 
 
 pytestmark = pytest.mark.unit
@@ -6,7 +7,6 @@ pytestmark = pytest.mark.unit
 
 @pytest.mark.parametrize("error", [None, ConnectionError("connection refused"), RuntimeError("authentication failed")])
 def test_qdrant_availability_closes_client(error, monkeypatch):
-    from kb_api.rag_indexer.tests import conftest
 
     class Client:
         closed = False
@@ -30,7 +30,6 @@ def test_qdrant_availability_closes_client(error, monkeypatch):
 
 
 def test_drop_vector_collection_uses_configured_vector(monkeypatch):
-    from kb_api.rag_indexer.tests import conftest
 
     calls = []
 
@@ -47,7 +46,6 @@ def test_drop_vector_collection_uses_configured_vector(monkeypatch):
 
 
 def test_milvus_skip_helper_skips_when_connection_fails(monkeypatch):
-    from kb_api.rag_indexer.tests import conftest
 
     monkeypatch.setattr(conftest, "_milvus_available", lambda uri: False)
 
@@ -56,7 +54,6 @@ def test_milvus_skip_helper_skips_when_connection_fails(monkeypatch):
 
 
 def test_qdrant_skip_helper_skips_when_connection_fails(monkeypatch):
-    from kb_api.rag_indexer.tests import conftest
 
     monkeypatch.setattr(conftest, "_qdrant_available", lambda url: False)
 
@@ -65,7 +62,6 @@ def test_qdrant_skip_helper_skips_when_connection_fails(monkeypatch):
 
 
 def test_milvus_available_does_not_hide_non_connection_errors(monkeypatch):
-    from kb_api.rag_indexer.tests import conftest
 
     def raise_non_connection_error(uri):
         raise RuntimeError("authentication failed")

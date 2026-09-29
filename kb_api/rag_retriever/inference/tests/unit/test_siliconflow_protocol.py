@@ -5,7 +5,9 @@ import pytest
 
 from kb_api.rag_retriever.common.config import RetryConfig
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError, upstream_error
-from kb_api import request_context as request_ids
+from kb_api.api import middleware as request_ids
+from kb_api.rag_retriever.inference.config_loader import InferenceConfig, SiliconFlowConfig
+from kb_api.rag_retriever.inference.service import load_inference_components
 
 
 @pytest.fixture
@@ -19,23 +21,26 @@ def request_context():
 
 
 @pytest.fixture
-def make_client():
-    from kb_api.rag_retriever.inference.providers.siliconflow import SiliconFlowInferenceClient
-
+def make_client(monkeypatch):
     clients = []
+    http_client = httpx.Client
 
     def make(handler, **kwargs):
-        client = SiliconFlowInferenceClient(
+        config = SiliconFlowConfig(
             base_url="https://api.siliconflow.cn/v1",
             api_key="test-external-key",
             dense_model="BAAI/bge-m3",
             rerank_model="BAAI/bge-reranker-v2-m3",
             dense_timeout=12.0,
             rerank_timeout=7.0,
-            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
             retry=kwargs.pop("retry", RetryConfig(max_attempts=1)),
             **kwargs,
         )
+        with monkeypatch.context() as patch:
+            patch.setattr(httpx, "Client", lambda **options: http_client(
+                **options, transport=httpx.MockTransport(handler),
+            ))
+            client = load_inference_components(InferenceConfig(siliconflow=config))
         clients.append(client)
         return client
 
@@ -44,7 +49,7 @@ def make_client():
         client.close()
 
 
-def test_dense_batch_order_and_query(make_client):
+def test_dense_query(make_client):
     def handler(request):
         assert str(request.url) == "https://api.siliconflow.cn/v1/embeddings"
         assert request.headers["authorization"] == "Bearer test-external-key"
@@ -53,20 +58,14 @@ def test_dense_batch_order_and_query(make_client):
         assert payload["model"] == "BAAI/bge-m3"
         assert payload["encoding_format"] == "float"
         assert "dimensions" not in payload
-        if payload["input"] == ["a", "b"]:
-            return httpx.Response(200, json={"data": [
-                {"index": 1, "embedding": [0.3, 0.4]},
-                {"index": 0, "embedding": [0.1, 0.2]},
-            ]})
         assert payload["input"] == "q"
         return httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.5, 0.6]}]})
 
     client = make_client(handler)
-    assert client.dense.embed_documents(["a", "b"]) == [[0.1, 0.2], [0.3, 0.4]]
     assert client.dense.embed_query("q") == [0.5, 0.6]
 
 
-def test_dimensions_are_sent_for_documents_and_queries(make_client):
+def test_dimensions_are_sent_for_queries(make_client):
     inputs = []
 
     def handler(request):
@@ -76,19 +75,8 @@ def test_dimensions_are_sent_for_documents_and_queries(make_client):
         return httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.1] * 768}]})
 
     client = make_client(handler, dimensions=768)
-    assert len(client.dense.embed_documents(["document"])[0]) == 768
     assert len(client.dense.embed_query("query")) == 768
-    assert inputs == [["document"], "query"]
-
-
-def test_siliconflow_clients_are_exported_from_provider_modules():
-    from kb_api.rag_retriever.inference.providers.siliconflow.client import SiliconFlowInferenceClient
-    from kb_api.rag_retriever.inference.providers.siliconflow.dense import SiliconFlowDenseClient
-    from kb_api.rag_retriever.inference.providers.siliconflow.rerank import SiliconFlowRerankClient
-
-    assert SiliconFlowInferenceClient.__name__ == "SiliconFlowInferenceClient"
-    assert SiliconFlowDenseClient.__name__ == "SiliconFlowDenseClient"
-    assert SiliconFlowRerankClient.__name__ == "SiliconFlowRerankClient"
+    assert inputs == ["query"]
 
 
 def test_dense_http_error_logs_model_status_without_response_body(make_client, caplog):
@@ -250,16 +238,16 @@ def _assert_invalid_response(make_client, operation, body):
 
 
 @pytest.mark.parametrize("rows, dimensions", [
-    ([{"index": 0, "embedding": [0.1]}], None),
+    ([{"index": 1, "embedding": [0.1]}], None),
     ([{"index": 0, "embedding": [0.1]}, {"index": 0, "embedding": [0.2]}], None),
     ([{"index": 0, "embedding": [0.1]}, {"index": 2, "embedding": [0.2]}], None),
     ([{"index": 0, "embedding": [0.1]}, {"index": 1, "embedding": [0.2, 0.3]}], None),
     ([{"index": 0, "embedding": [0.1]}, {"index": 1, "embedding": [0.2]}], 2),
 ])
-def test_incomplete_or_inconsistent_embeddings(make_client, rows, dimensions):
+def test_query_rejects_unexpected_indices_and_dimensions(make_client, rows, dimensions):
     client = make_client(lambda request: httpx.Response(200, json={"data": rows}), dimensions=dimensions)
     with pytest.raises(UpstreamServiceError) as caught:
-        client.dense.embed_documents(["a", "b"])
+        client.dense.embed_query("q")
     assert caught.value.status_code == 502
     assert caught.value.retryable is False
 

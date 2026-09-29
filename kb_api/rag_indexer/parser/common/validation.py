@@ -1,9 +1,9 @@
+import pymupdf
 class InvalidDocumentError(ValueError):
     pass
 
 
 def validate_pdf_file(filepath: str) -> None:
-    import pymupdf
 
     try:
         with pymupdf.open(filepath):

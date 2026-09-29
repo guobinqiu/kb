@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS kb.apps (
 
 CREATE TABLE IF NOT EXISTS kb.orgs (
     id UUID PRIMARY KEY,
-    app_id UUID NOT NULL REFERENCES kb.apps(id) ON DELETE CASCADE,
-    parent_id UUID NULL REFERENCES kb.orgs(id) ON DELETE CASCADE,
+    app_id UUID NOT NULL REFERENCES kb.apps(id),
+    parent_id UUID NULL REFERENCES kb.orgs(id),
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
@@ -30,7 +30,7 @@ WHERE parent_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS kb.users (
     id UUID PRIMARY KEY,
-    org_id UUID REFERENCES kb.orgs(id) ON DELETE CASCADE,
+    org_id UUID REFERENCES kb.orgs(id),
     name TEXT NOT NULL UNIQUE,
     password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'member',
@@ -44,16 +44,17 @@ CREATE TABLE IF NOT EXISTS kb.users (
 
 CREATE TABLE IF NOT EXISTS kb.workspaces (
     id UUID PRIMARY KEY,
-    app_id UUID NOT NULL REFERENCES kb.apps(id) ON DELETE CASCADE,
+    app_id UUID NOT NULL REFERENCES kb.apps(id),
     name TEXT NOT NULL,
+    created_by UUID REFERENCES kb.users(id),
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS kb.workspace_user (
     id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES kb.users(id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id),
+    user_id UUID NOT NULL REFERENCES kb.users(id),
     role TEXT NOT NULL DEFAULT 'editor',
     CONSTRAINT workspace_user_workspace_user_key UNIQUE (workspace_id, user_id),
     CONSTRAINT workspace_user_role_check CHECK (role IN ('admin', 'editor', 'viewer'))
@@ -61,8 +62,8 @@ CREATE TABLE IF NOT EXISTS kb.workspace_user (
 
 CREATE TABLE IF NOT EXISTS kb.workspace_org (
     id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id) ON DELETE CASCADE,
-    org_id UUID NOT NULL REFERENCES kb.orgs(id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id),
+    org_id UUID NOT NULL REFERENCES kb.orgs(id),
     role TEXT NOT NULL DEFAULT 'viewer',
     CONSTRAINT workspace_org_workspace_org_key UNIQUE (workspace_id, org_id),
     CONSTRAINT workspace_org_role_check CHECK (role IN ('editor', 'viewer'))
@@ -70,16 +71,15 @@ CREATE TABLE IF NOT EXISTS kb.workspace_org (
 
 CREATE TABLE IF NOT EXISTS kb.files (
     id UUID PRIMARY KEY,
-    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id) ON DELETE CASCADE,
+    workspace_id UUID NOT NULL REFERENCES kb.workspaces(id),
     filename TEXT NOT NULL,
-    object_key TEXT,
     s3_url TEXT,
     mime_type TEXT,
     size_bytes BIGINT,
     checksum TEXT,
     status TEXT NOT NULL,
-    error JSONB,
-    created_by UUID REFERENCES kb.users(id) ON DELETE SET NULL,
+    error TEXT,
+    created_by UUID REFERENCES kb.users(id),
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     indexed_at TIMESTAMPTZ,

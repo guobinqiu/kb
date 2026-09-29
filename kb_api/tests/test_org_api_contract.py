@@ -1,4 +1,5 @@
 import pytest
+from contextlib import nullcontext
 from pydantic import ValidationError
 from types import SimpleNamespace
 from fastapi.testclient import TestClient
@@ -7,8 +8,8 @@ from kb_api.api.routes.apps import create_app as create_app_route, list_apps as 
 from kb_api.api.routes.users import create_user as create_user_route, list_users as list_users_route
 from kb_api.api.routes.workspaces import add_member as add_workspace_member_route
 from kb_api.api.schemas import AppCreate, UserCreate, WorkspaceMemberCreate
-from kb_api.auth import create_token, resolve_principal
-from kb_api.main import app, create_app
+from kb_api.api.auth import create_token, resolve_principal
+from kb_api.api.main import app, create_app
 
 
 def test_user_payload_uses_org_id_and_owner_has_no_org():
@@ -56,7 +57,7 @@ def test_search_only_exposes_rag_endpoint():
     assert "/api/v1/workspaces/{workspace_id}/search" not in paths
 
 
-class _AuthRepository:
+class _AuthDAO:
     def __init__(self, user):
         self.user = user
         self.active_org_calls = []
@@ -77,16 +78,16 @@ class _AuthRepository:
 
 def _request_for(user):
     secret = "test-secret"
-    repository = _AuthRepository(user)
+    dao = _AuthDAO(user)
     request = SimpleNamespace(
         headers={"Authorization": f"Bearer {create_token({'sub': user['id']}, secret)}"},
-        app=SimpleNamespace(state=SimpleNamespace(repository=repository, token_secret=secret)),
+        app=SimpleNamespace(state=SimpleNamespace(dao=dao, token_secret=secret)),
     )
-    return request, repository
+    return request, dao
 
 
 def test_owner_principal_has_no_org_and_does_not_check_org_activity():
-    request, repository = _request_for({
+    request, dao = _request_for({
         "id": "owner-1", "org_id": None, "role": "owner", "deleted_at": None,
     })
 
@@ -94,11 +95,11 @@ def test_owner_principal_has_no_org_and_does_not_check_org_activity():
 
     assert principal["org_id"] is None
     assert "node_id" not in principal
-    assert repository.active_org_calls == []
+    assert dao.active_org_calls == []
 
 
 def test_member_principal_uses_active_org_context():
-    request, repository = _request_for({
+    request, dao = _request_for({
         "id": "member-1", "org_id": "org-1", "role": "member", "deleted_at": None,
     })
 
@@ -106,21 +107,24 @@ def test_member_principal_uses_active_org_context():
 
     assert principal["org_id"] == "org-1"
     assert principal["app_id"] == "business-app"
-    assert repository.active_org_calls == ["org-1"]
+    assert dao.active_org_calls == ["org-1"]
 
 
-class _AppRepository:
+class _AppDAO:
     def __init__(self):
         self.list_calls = []
 
-    def list_apps(self, org_id, include_disabled=False):
-        self.list_calls.append((org_id, include_disabled))
+    def list_apps(self, org_id):
+        self.list_calls.append(org_id)
         return [{"id": "app-1", "app_id": "app", "api_key": "secret"}]
 
     def get_app_by_business_id(self, app_id):
         return None
 
-    def create_app(self, name, app_id):
+    def _connect(self):
+        return nullcontext()
+
+    def create_app(self, name, app_id, *, connection=None):
         return (
             {"id": "app-1", "app_id": app_id, "name": name},
             {"id": "org-1", "app_id": "app-1", "parent_id": None, "name": name},
@@ -128,18 +132,18 @@ class _AppRepository:
 
 
 def test_owner_app_list_is_global_and_app_create_returns_org():
-    repository = _AppRepository()
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(repository=repository)))
+    dao = _AppDAO()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(dao=dao)))
     owner = {"id": "owner-1", "org_id": None, "role": "owner"}
 
     assert list_apps_route(request, user=owner)["apps"][0]["id"] == "app-1"
-    assert repository.list_calls == [(None, True)]
+    assert dao.list_calls == [None]
     created = create_app_route(AppCreate(app_id="acme", name="Acme"), request, user=owner)
     assert set(created) == {"app", "org"}
     assert created["org"]["parent_id"] is None
 
 
-class _UserRepository:
+class _UserDAO:
     def __init__(self):
         self.list_calls = []
         self.create_values = None
@@ -154,8 +158,8 @@ class _UserRepository:
 
 
 def test_owner_user_list_is_global_and_created_owner_has_null_org():
-    repository = _UserRepository()
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(repository=repository)))
+    dao = _UserDAO()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(dao=dao)))
     owner = {"id": "owner-1", "org_id": None, "role": "owner"}
 
     assert list_users_route(request, include_disabled=True, user=owner) == {"users": []}
@@ -163,20 +167,17 @@ def test_owner_user_list_is_global_and_created_owner_has_null_org():
         name="owner-2", password="password-123", role="owner",
     ), request, user=owner)
 
-    assert repository.list_calls == [(None, True)]
+    assert dao.list_calls == [(None, True)]
     assert created["org_id"] is None
-    assert repository.create_values["org_id"] is None
+    assert dao.create_values["org_id"] is None
 
 
 class _NoopService:
-    def start_consumer(self, *_args):
-        pass
-
     def close(self):
         pass
 
 
-class _MainRepository:
+class _MainDAO:
     def __init__(self):
         self.owner = {
             "id": "owner-1",
@@ -193,7 +194,7 @@ class _MainRepository:
     def get_user(self, user_id):
         return self.owner if user_id == self.owner["id"] else None
 
-    def list_apps(self, org_id, include_disabled=False):
+    def list_apps(self, org_id):
         assert org_id is None
         return [{"id": "app-uuid", "app_id": "business-app"}]
 
@@ -205,16 +206,16 @@ class _MainRepository:
 
 
 def test_owner_auth_context_uses_org_header_and_never_node_header(monkeypatch):
-    repository = _MainRepository()
+    dao = _MainDAO()
     application = create_app(
-        repository=repository,
+        dao=dao,
         storage=_NoopService(),
         queue=_NoopService(),
         retriever=SimpleNamespace(),
         token_secret="test-secret",
         initialize=False,
     )
-    monkeypatch.setattr("kb_api.main.verify_password", lambda password, encoded: password == "password-123")
+    monkeypatch.setattr("kb_api.api.routes.auth.verify_password", lambda password, encoded: password == "password-123")
 
     with TestClient(application) as client:
         login = client.post("/api/v1/auth/login", json={"name": "owner", "password": "password-123"})
@@ -233,7 +234,7 @@ def test_owner_auth_context_uses_org_header_and_never_node_header(monkeypatch):
     assert "node_id" not in verified.json()
 
 
-class _WorkspaceRepository:
+class _WorkspaceDAO:
     def __init__(self):
         self.add_values = None
 
@@ -267,8 +268,8 @@ class _WorkspaceRepository:
         return {"id": f"membership-{user_id}", **value}
 
 def test_workspace_member_api_persists_personal_role():
-    repository = _WorkspaceRepository()
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(repository=repository)))
+    dao = _WorkspaceDAO()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(dao=dao)))
     owner = {"id": "owner-1", "org_id": None, "role": "owner"}
 
     result = add_workspace_member_route(
@@ -278,4 +279,4 @@ def test_workspace_member_api_persists_personal_role():
     assert result == {"member": {
         "id": "membership-user-1", "workspace_id": "workspace-1", "user_id": "user-1", "role": "editor",
     }}
-    assert repository.add_values == [{"workspace_id": "workspace-1", "user_id": "user-1", "role": "editor"}]
+    assert dao.add_values == [{"workspace_id": "workspace-1", "user_id": "user-1", "role": "editor"}]

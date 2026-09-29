@@ -3,7 +3,7 @@
     <SectionHeader :title="t('users.title')" :description="platformAccounts ? t('workspace.platformAccounts') : selectedOrg?.name || t('users.selectOrg')">
       <template #actions>
         <el-button :icon="Lock" @click="passwordDialog = true">{{ t('workspace.myAccount') }}</el-button>
-        <el-button v-if="canManage" type="primary" :icon="Plus" :disabled="(!platformAccounts && !effectiveOrgId) || (effectiveOrgId && isOrgInactive(effectiveOrgId))" @click="dialogVisible = true">{{ t('users.create') }}</el-button>
+        <el-button type="primary" :icon="Plus" :disabled="!canManage || (!platformAccounts && !effectiveOrgId) || (effectiveOrgId && isOrgInactive(effectiveOrgId))" @click="dialogVisible = true">{{ t('users.create') }}</el-button>
       </template>
     </SectionHeader>
 
@@ -20,13 +20,13 @@
         <el-table-column :label="t('users.role')" min-width="120"><template #default="{ row }">{{ t(`users.roles.${row.role}`) }}</template></el-table-column>
         <el-table-column :label="t('users.status')" min-width="100"><template #default="{ row }">{{ row.deleted_at ? t('users.disabled') : t('users.active') }}</template></el-table-column>
         <el-table-column :label="t('users.org')" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ orgName(row.org_id) }}</template></el-table-column>
-        <el-table-column v-if="canManage" :label="t('common.actions')" width="132" align="right">
+        <el-table-column :label="t('common.actions')" width="132" align="right">
           <template #default="{ row }">
-            <el-tooltip v-if="row.id !== currentUser?.id && (row.role !== 'owner' || currentUser?.role === 'owner')" :content="t('common.edit')">
-              <el-button :icon="Edit" circle size="small" :aria-label="t('common.edit')" @click="openEdit(row)" />
+            <el-tooltip :content="t('common.edit')">
+              <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="Edit" circle size="small" :aria-label="t('common.edit')" @click="openEdit(row)" />
             </el-tooltip>
-            <el-tooltip v-if="row.id !== currentUser?.id && (row.role !== 'owner' || currentUser?.role === 'owner')" :content="row.deleted_at ? t('common.restore') : t('common.disable')">
-              <el-button :icon="row.deleted_at ? RefreshLeft : Delete" circle size="small" :type="row.deleted_at ? 'primary' : 'danger'" plain :aria-label="row.deleted_at ? t('common.restore') : t('common.disable')" :loading="deletingId === row.id" @click="row.deleted_at ? restoreUser(row) : deleteUser(row)" />
+            <el-tooltip :content="row.deleted_at ? t('common.restore') : t('common.disable')">
+              <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="row.deleted_at ? RefreshLeft : Delete" circle size="small" :type="row.deleted_at ? 'primary' : 'danger'" plain :aria-label="row.deleted_at ? t('common.restore') : t('common.disable')" :loading="deletingId === row.id" @click="row.deleted_at ? restoreUser(row) : deleteUser(row)" />
             </el-tooltip>
           </template>
         </el-table-column>

@@ -1,9 +1,9 @@
-from kb_api.auth import hash_password
+from kb_api.api.auth import hash_password
 from kb_api.tests.helpers import upload_file
 
 
 def _setup(system):
-    repo = system["repository"]
+    repo = system["dao"]
     app, org = repo.create_app("Roles", "roles")
     workspace = repo.create_workspace(app["id"], "Policies", creator_id=system["admin"]["id"])
     user = repo.create_user(org_id=org["id"], name="reader", password_hash=hash_password("password123"))
@@ -14,7 +14,7 @@ def _setup(system):
 
 def test_org_grant_personal_override_and_workspace_admin_directory(system):
     _, org, workspace, user, headers = _setup(system)
-    client, repo = system["client"], system["repository"]
+    client, repo = system["client"], system["dao"]
     base = f"/api/v1/workspaces/{workspace['id']}"
     owner = system["headers"]
     denied = client.post(f"{base}/members", json={"type": "org", "id": org["id"], "role": "admin"}, headers=owner)
@@ -49,16 +49,46 @@ def test_org_grant_personal_override_and_workspace_admin_directory(system):
 
 def test_last_workspace_admin_cannot_be_removed_or_demoted(system):
     _, _, workspace, _, _ = _setup(system)
-    repo, client = system["repository"], system["client"]
+    repo, client = system["dao"], system["client"]
     member = next(item for item in repo.list_workspace_members(workspace["id"]) if item["role"] == "admin")
     url = f"/api/v1/workspaces/{workspace['id']}/members/{member['id']}?type=user"
     assert client.put(url, json={"role": "viewer"}, headers=system["headers"]).status_code == 409
     assert client.delete(url, headers=system["headers"]).status_code == 409
 
 
+def test_workspace_creator_can_delete_but_other_admin_cannot(system):
+    app, org, _, creator, headers = _setup(system)
+    dao, client = system["dao"], system["client"]
+    dao.update_user(creator["id"], role="admin")
+    response = client.post(
+        f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Created"}, headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    workspace = response.json()["workspace"]
+    assert workspace["created_by"] == creator["id"]
+    other = dao.create_user(org_id=org["id"], name="other-admin", password_hash=hash_password("password123"), role="admin")
+    dao.add_workspace_member(workspace["id"], user_id=other["id"], role="admin")
+    login = client.post("/api/v1/auth/login", json={"name": other["name"], "password": "password123"})
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    base = f"/api/v1/workspaces/{workspace['id']}"
+    assert client.get(base, headers=other_headers).json()["permissions"]["workspace.delete"] is False
+    assert client.delete(base, headers=other_headers).status_code == 403
+    assert client.get(base, headers=headers).json()["permissions"]["workspace.delete"] is True
+    assert client.delete(base, headers=headers).status_code == 204
+
+
+def test_owner_can_delete_workspace_without_membership(system):
+    app, _, _, creator, _ = _setup(system)
+    workspace = system["dao"].create_workspace(app["id"], "Private", creator_id=creator["id"])
+    response = system["client"].delete(
+        f"/api/v1/workspaces/{workspace['id']}", headers=system["headers"],
+    )
+    assert response.status_code == 204, response.text
+
+
 def test_viewer_file_permissions_after_demotion(system):
     _, _, workspace, user, headers = _setup(system)
-    repo, client = system["repository"], system["client"]
+    repo, client = system["dao"], system["client"]
     membership = repo.add_workspace_member(workspace["id"], user_id=user["id"], role="editor")
     record = upload_file({**system, "headers": headers}, workspace_id=workspace["id"])
     repo.update_workspace_member(workspace["id"], membership["id"], role="viewer")
@@ -71,7 +101,7 @@ def test_viewer_file_permissions_after_demotion(system):
 
 def test_workspace_user_directory_paginates_direct_org_and_enterprise_search(system):
     app, org, workspace, user, _ = _setup(system)
-    repo, client = system["repository"], system["client"]
+    repo, client = system["dao"], system["client"]
     headers = system["headers"]
     child = repo.create_org(app["id"], org["id"], "Child")
     for name in ["Staff Alpha", "Staff Beta", "Staff Percent%"]:

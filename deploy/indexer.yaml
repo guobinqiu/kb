@@ -22,9 +22,9 @@ services:
       dockerfile: kb_api/rag_indexer/Dockerfile
       args:
         USE_CN_MIRROR: ${USE_CN_MIRROR:-true}
-    command: ["/app/.venv/bin/uvicorn", "kb_api.rag_indexer.app.main:app", "--host", "0.0.0.0", "--port", "6000", "--workers", "1"]
+    command: ["/app/.venv/bin/python", "-m", "kb_api.rag_indexer.app.main"]
     healthcheck:
-      test: ["CMD-SHELL", "/app/.venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:6000/health', timeout=2).read()\""]
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import os; os.kill(1, 0)"]
       interval: 10s
       timeout: 3s
       retries: 60

@@ -9,6 +9,12 @@
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
+
+import chat.src.api.auth as auth_mod
+from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
+from chat.src.api.auth import AppCredential
+from chat.src.rag.schemas import Document
 
 
 pytestmark = pytest.mark.unit
@@ -17,9 +23,7 @@ pytestmark = pytest.mark.unit
 @pytest.mark.asyncio
 async def test_rag_prefetch_calls_client_with_query(monkeypatch):
     """rag_prefetch_node 用最后一条 HumanMessage 的内容调 client.search。"""
-    from langchain_core.messages import HumanMessage
 
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
 
     captured = {}
 
@@ -27,7 +31,6 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
         async def aclose(self): pass
         async def search(self, req, **kwargs):
             captured["query"] = req.query
-            from chat.src.rag.schemas import Document
             return type("R", (), {
                 "success": True, "status_code": 200,
                 "documents": [
@@ -41,8 +44,6 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
 
     monkeypatch.setattr("chat.src.rag.client.get_rag_client", lambda: _C())
 
-    from chat.src.api.auth import AppCredential
-    import chat.src.api.auth as auth_mod
 
     monkeypatch.setattr(
         auth_mod,
@@ -58,10 +59,6 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rag_prefetch_keeps_workspace_results_separate(monkeypatch):
-    from langchain_core.messages import HumanMessage
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
-    from chat.src.api.auth import AppCredential
-    import chat.src.api.auth as auth_mod
 
     requested = []
 
@@ -86,10 +83,6 @@ async def test_rag_prefetch_keeps_workspace_results_separate(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rag_prefetch_rejects_failed_workspace_search(monkeypatch):
-    from langchain_core.messages import HumanMessage
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
-    from chat.src.api.auth import AppCredential
-    import chat.src.api.auth as auth_mod
 
     class _Client:
         async def search(self, req, **kwargs):
@@ -105,9 +98,7 @@ async def test_rag_prefetch_rejects_failed_workspace_search(monkeypatch):
 @pytest.mark.asyncio
 async def test_rag_prefetch_empty_on_exception(monkeypatch):
     """client.search 抛异常时返回检索错误。"""
-    from langchain_core.messages import HumanMessage
 
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
 
     class _BadClient:
         async def aclose(self): pass
@@ -116,8 +107,6 @@ async def test_rag_prefetch_empty_on_exception(monkeypatch):
 
     monkeypatch.setattr("chat.src.rag.client.get_rag_client", lambda: _BadClient())
 
-    from chat.src.api.auth import AppCredential
-    import chat.src.api.auth as auth_mod
 
     monkeypatch.setattr(
         auth_mod,
@@ -133,9 +122,7 @@ async def test_rag_prefetch_empty_on_exception(monkeypatch):
 @pytest.mark.asyncio
 async def test_rag_prefetch_empty_on_no_human_message():
     """没有 HumanMessage 时返回空 rag_context。"""
-    from langchain_core.messages import AIMessage
 
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
 
     state = {"messages": [AIMessage(content="hi")]}
     result = await rag_prefetch_node(state)
@@ -144,11 +131,7 @@ async def test_rag_prefetch_empty_on_no_human_message():
 
 @pytest.mark.asyncio
 async def test_rag_prefetch_forwards_selected_workspace(monkeypatch):
-    from langchain_core.messages import HumanMessage
 
-    import chat.src.api.auth as auth_mod
-    from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
-    from chat.src.api.auth import AppCredential
 
     captured = {}
 

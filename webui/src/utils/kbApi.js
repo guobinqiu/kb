@@ -164,7 +164,7 @@ async function uploadDirect(workspaceId, file, fileId) {
     throw new Error(`MinIO upload failed (${result.status}): ${detail || result.statusText}`)
   }
   const completed = await axios.post(`${base}/${encodeURIComponent(upload.file_id)}/complete`, {
-    object_key: upload.object_key,
+    s3_url: upload.s3_url,
     filename: upload.filename,
     content_type: upload.content_type,
   })

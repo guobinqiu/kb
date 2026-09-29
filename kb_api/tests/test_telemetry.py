@@ -10,10 +10,10 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, SpanExportResult
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from kb_api.main import _unhandled_exception
-from kb_api import telemetry
-from kb_api.request_context import install_request_id_middleware
-from kb_api.telemetry import get_trace_id, install_search_tracing
+from kb_api.api.main import _unhandled_exception
+from kb_api.api import telemetry
+from kb_api.api.middleware import install_request_id_middleware
+from kb_api.api.telemetry import get_trace_id, install_search_tracing
 
 
 @pytest.fixture

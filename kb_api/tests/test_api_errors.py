@@ -8,11 +8,10 @@ def test_http_exception_uses_error_response_shape(system):
     workspace = system["client"].post(
         f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Documents"}, headers=system["headers"]
     ).json()["workspace"]
-    system["repository"].create_file(
+    system["dao"].create_file(
         id="11111111-1111-4111-8111-111111111111",
         workspace_id=workspace["id"],
         filename="report.txt",
-        object_key="uploads/report.txt",
         s3_url="s3://kb/uploads/report.txt",
         mime_type="text/plain",
         size_bytes=12,

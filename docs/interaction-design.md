@@ -51,6 +51,8 @@ flowchart LR
     Indexer --> VDB
 ```
 
+Indexer 是纯 MQ 消费进程，不提供 HTTP API：从 `kb.index.tasks` 消费索引与删除任务，通过 HTTP 向 KB API 回写结果。
+
 ## 身份与数据范围
 
 每个 App 对应一棵独立 org 树，界面从当前 App 根组织向下加载完整树。平台 `owner` 不挂组织；`admin` 和 `member` 通过 `org_id` 归属组织。用户登录名使用 `name`。Nginx 完成认证后向内部服务传递 `X-Org-Id`。
@@ -91,8 +93,7 @@ sequenceDiagram
     Inference-->>Indexer: 返回向量
     Indexer->>VDB: 写入索引
     VDB-->>Indexer: 写入结果
-    Indexer->>MQ: 发布索引结果
-    MQ->>KBAPI: 下发索引结果
+    Indexer->>KBAPI: HTTP 回写索引结果
     KBAPI->>RDB: 更新文件状态
     Indexer-->>MQ: basic.ack
 ```

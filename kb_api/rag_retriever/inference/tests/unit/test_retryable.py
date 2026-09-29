@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from kb_api.rag_retriever.inference.providers.siliconflow import _retryable_response
+from kb_api.rag_retriever.common.upstream import retryable_response
 
 
 @pytest.mark.parametrize("status,body,expected", [
@@ -14,10 +14,9 @@ from kb_api.rag_retriever.inference.providers.siliconflow import _retryable_resp
     (503, [], True),
 ])
 def test_retryable_uses_http_status(status, body, expected):
-    assert _retryable_response(httpx.Response(status, json=body)) is expected
+    assert retryable_response(httpx.Response(status, json=body)) is expected
 
 
 def test_html_and_missing_response_are_retryable_when_status_is_temporary():
-    assert _retryable_response(httpx.Response(503, text="bad gateway")) is True
-    assert _retryable_response(None) is True
-
+    assert retryable_response(httpx.Response(503, text="bad gateway")) is True
+    assert retryable_response(None) is True

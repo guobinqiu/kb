@@ -3,6 +3,8 @@ from types import SimpleNamespace
 import pytest
 from starlette.requests import Request
 
+from chat.src.api.routes import threads
+
 
 pytestmark = pytest.mark.unit
 
@@ -19,7 +21,6 @@ def _request() -> Request:
 
 @pytest.mark.asyncio
 async def test_list_threads_returns_checkpointer_threads(monkeypatch):
-    from chat.src.api.routes import threads
 
     class FakeCheckpointer:
         async def alist(self, config, *, limit=None):

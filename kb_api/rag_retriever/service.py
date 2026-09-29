@@ -4,18 +4,25 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import HTTPException
-
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
 from kb_api.rag_retriever.common.config import SearchConfig, load_search_config, load_vector_config
 from kb_api.rag_retriever.clients.vector.milvus import MilvusVectorClient
 from kb_api.rag_retriever.clients.vector.qdrant import QdrantVectorClient
 from kb_api.rag_retriever.core.scope import validate_app_id
 from kb_api.rag_retriever.core.search import SearchPlan, _SearchExecutor
+from kb_api.rag_retriever.inference.config_loader import load_inference_config
+from kb_api.rag_retriever.inference.service import load_inference_components
 from kb_api.rag_retriever.schemas import SearchRequest
 
 
 logger = logging.getLogger(__name__)
+
+
+class RetrieverRequestError(ValueError):
+    def __init__(self, *, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 
 class Retriever:
@@ -44,7 +51,7 @@ class Retriever:
         )
         sparse_ready = self.vector.supports_sparse_vector()
         if plan.mode == "sparse" and not sparse_ready:
-            raise HTTPException(status_code=400, detail="sparse search is not configured")
+            raise RetrieverRequestError(status_code=400, detail="sparse search is not configured")
         if plan.mode == "hybrid" and not sparse_ready:
             plan = _replace_mode(plan, "dense")
         rerank_client = self.inference.rerank
@@ -56,25 +63,12 @@ class Retriever:
             with self.vector.app_scope(request.app_id):
                 executor = _SearchExecutor(plan, vector=self.vector, rerank=rerank_client)
                 results = executor.execute()
-        except (HTTPException, UpstreamServiceError):
+        except (RetrieverRequestError, UpstreamServiceError):
             raise
         except Exception as exc:
             logger.exception("Search failed")
-            if all(hasattr(exc, name) for name in ("service", "error", "retryable", "status_code")):
-                raise UpstreamServiceError(
-                    service=exc.service,
-                    error=exc.error,
-                    retryable=exc.retryable,
-                    status_code=exc.status_code,
-                ) from exc
             raise UpstreamServiceError(service="kb_api.rag_retriever", error=str(exc), retryable=False, status_code=500) from exc
         return _response(plan, results, executor.elapsed_ms)
-
-    def ping(self) -> bool:
-        inference_ready = getattr(self.inference, "ping", lambda: True)()
-        vector_ready = getattr(self.vector, "ping", lambda: getattr(self.vector, "ready", False))()
-        return bool(inference_ready and vector_ready)
-
 
 def _response(plan: SearchPlan, results: list[dict], elapsed_ms: float) -> dict:
     return {
@@ -103,9 +97,6 @@ def _disable_rerank(plan: SearchPlan) -> SearchPlan:
 
 
 def load_retriever() -> Retriever:
-    from kb_api.rag_retriever.inference.config_loader import load_inference_config
-    from kb_api.rag_retriever.inference.service import load_inference_components
-
     config_path = Path(os.getenv("KB_CONFIG_FILE", Path(__file__).resolve().parents[1] / "config/rag.yaml"))
     vector_config = load_vector_config(config_path)
     inference = load_inference_components(load_inference_config(config_path))
@@ -116,7 +107,6 @@ def load_retriever() -> Retriever:
             url=vector_config.base_url,
             timeout=vector_config.timeout,
             query_timeout=vector_config.query_timeout,
-            write_timeout=vector_config.write_timeout,
             init_timeout=vector_config.init_timeout,
             drop_timeout=vector_config.drop_timeout,
             quantization=vector_config.quantization,
@@ -130,7 +120,6 @@ def load_retriever() -> Retriever:
             uri=vector_config.base_url,
             timeout=vector_config.timeout,
             query_timeout=vector_config.query_timeout,
-            write_timeout=vector_config.write_timeout,
             init_timeout=vector_config.init_timeout,
             drop_timeout=vector_config.drop_timeout,
             token=vector_config.token,

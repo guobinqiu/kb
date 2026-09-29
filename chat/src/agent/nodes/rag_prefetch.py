@@ -10,6 +10,9 @@ import asyncio
 from typing import Any
 
 from chat.src.agent.stream import safe_get_writer
+from chat.src.api import auth
+from chat.src.rag import client as rag_client
+from chat.src.rag.schemas import SearchRequest
 
 
 class RagSearchError(RuntimeError):
@@ -36,9 +39,7 @@ async def rag_prefetch_node(state: dict[str, Any]) -> dict[str, Any]:
     if not query.strip():
         return {"rag_context": ""}
 
-    from chat.src.api.auth import get_current_authorization, get_current_credential
-
-    credential = get_current_credential()
+    credential = auth.get_current_credential()
     if credential is None:
         return {"rag_context": ""}
 
@@ -46,16 +47,12 @@ async def rag_prefetch_node(state: dict[str, Any]) -> dict[str, Any]:
     if not workspace_ids:
         return {"rag_context": "[RAG 检索完成，未找到可访问的工作区]"}
 
-    # Lazy-import get_rag_client for testability
-    from chat.src.rag.client import get_rag_client
-    client = get_rag_client()
-
-    from chat.src.rag.schemas import SearchRequest
+    client = rag_client.get_rag_client()
 
     async def search_workspace(workspace_id: str):
         result = await client.search(
             SearchRequest(query=query, workspace_ids=[workspace_id], top_k=3),
-            authorization=get_current_authorization(),
+            authorization=auth.get_current_authorization(),
             app_id=credential.app_id,
         )
         if not result.success:

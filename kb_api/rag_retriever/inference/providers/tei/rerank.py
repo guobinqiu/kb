@@ -4,11 +4,10 @@ import time
 
 import httpx
 
-from kb_api.rag_retriever.inference.common.retry import retry_call
-from kb_api.rag_retriever.common.upstream import upstream_error
+from kb_api.rag_retriever.common.retry import retry_call
+from kb_api.rag_retriever.common.upstream import retryable_response, upstream_error
 
 from .base import TeiModel
-from .retryable import _retryable_response
 from .schemas import _RerankRowsAdapter
 
 
@@ -36,7 +35,7 @@ class TeiRerankClient(TeiModel):
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            error = upstream_error("inference", exc, retryable=retryable_response(response))
             self._log_call("rerank", started, response, error, top_k=top_k)
             raise error from exc
         try:
@@ -50,7 +49,7 @@ class TeiRerankClient(TeiModel):
                 result["_score"] = row.score
                 results.append(result)
         except (TypeError, ValueError) as exc:
-            error = upstream_error("inference", exc, retryable=_retryable_response(response))
+            error = upstream_error("inference", exc, retryable=retryable_response(response))
             self._log_call("rerank", started, response, error, top_k=top_k)
             raise error from exc
         self._log_call("rerank", started, response, top_k=top_k)

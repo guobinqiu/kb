@@ -1,4 +1,12 @@
 import pytest
+from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
+from kb_api.rag_indexer.core.scope import app_collection
+from kb_api.rag_indexer.clients.vector import qdrant
+from kb_api.rag_indexer.clients.vector.qdrant import _metadata_payload_filter
+import logging
+import uuid
+from kb_api.rag_indexer.common.config import QdrantQuantizationConfig
+from kb_api.rag_indexer.clients.vector.qdrant import _decode_chunk_cursor, _encode_chunk_cursor
 
 
 pytestmark = pytest.mark.unit
@@ -49,7 +57,6 @@ def _chunk(chunk_id="chunk-1", content="通用知识"):
 
 
 def _started_vector(client, dense=None, sparse=None, **kwargs):
-    from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
 
     vector = QdrantVectorClient(dense=dense or FakeDense(), sparse=sparse, **kwargs)
     vector.client = client
@@ -58,8 +65,6 @@ def _started_vector(client, dense=None, sparse=None, **kwargs):
 
 
 def test_add_file_chunks_writes_file_metadata():
-    from kb_api.rag_indexer.core.scope import app_collection
-    from kb_api.rag_indexer.clients.vector import qdrant
 
     calls = []
 
@@ -85,7 +90,6 @@ def test_add_file_chunks_writes_file_metadata():
 
 
 def test_add_file_chunks_writes_sparse_vector_when_configured():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     calls = []
 
@@ -107,7 +111,6 @@ def test_add_file_chunks_writes_sparse_vector_when_configured():
 
 
 def test_metadata_filter_combines_file_and_workspace_ids():
-    from kb_api.rag_indexer.clients.vector.qdrant import _metadata_payload_filter
 
     metadata_filter = _metadata_payload_filter(file_ids=["file-a"], workspace_ids=["workspace-a", "workspace-b"])
 
@@ -118,7 +121,6 @@ def test_metadata_filter_combines_file_and_workspace_ids():
 
 
 def test_add_file_chunks_upserts_before_cleaning_stale_tail():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     events = []
 
@@ -144,8 +146,6 @@ def test_add_file_chunks_upserts_before_cleaning_stale_tail():
 
 
 def test_delete_stale_file_chunks_filters_by_file_and_tail_chunk_index():
-    from kb_api.rag_indexer.clients.vector import qdrant
-    from kb_api.rag_indexer.core.scope import app_collection
 
     filters = []
 
@@ -167,8 +167,6 @@ def test_delete_stale_file_chunks_filters_by_file_and_tail_chunk_index():
 
 
 def test_add_file_chunks_logs_backend_retriever_and_stage_fields(caplog):
-    import logging
-    from kb_api.rag_indexer.core.scope import app_collection
 
     class FakeClient:
         def count(self, **kwargs):
@@ -196,7 +194,6 @@ def test_add_file_chunks_logs_backend_retriever_and_stage_fields(caplog):
 
 
 def test_ensure_payload_indexes_creates_file_id_and_chunk_index_indexes():
-    from kb_api.rag_indexer.clients.vector import qdrant
 
     calls = []
 
@@ -215,7 +212,6 @@ def test_ensure_payload_indexes_creates_file_id_and_chunk_index_indexes():
 
 
 def test_qdrant_vector_uses_split_operation_timeouts():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     calls = []
 
@@ -294,8 +290,6 @@ def test_add_file_chunks_requires_file_id():
 
 
 def test_point_id_keeps_standard_uuid_chunk_id():
-    import uuid
-    from kb_api.rag_indexer.clients.vector import qdrant
 
     chunk_id = str(uuid.uuid4())
     point_id = qdrant._point_id(chunk_id)
@@ -305,7 +299,6 @@ def test_point_id_keeps_standard_uuid_chunk_id():
 
 
 def test_qdrant_client_uses_configured_timeout(monkeypatch):
-    from kb_api.rag_indexer.clients.vector import qdrant
 
     created = []
 
@@ -324,8 +317,6 @@ def test_qdrant_client_uses_configured_timeout(monkeypatch):
 @pytest.mark.parametrize("url", ["https://cluster.example.invalid", "https://cluster.example.invalid:6333", "https://cluster.example.invalid:443"])
 @pytest.mark.parametrize("api_key", [None, "test-api-key"])
 def test_qdrant_client_passes_cloud_authentication(monkeypatch, url, api_key):
-    from kb_api.rag_indexer.clients.vector import qdrant
-    from kb_api.rag_indexer.common.config import QdrantQuantizationConfig
 
     created = []
 
@@ -346,7 +337,6 @@ def test_qdrant_client_passes_cloud_authentication(monkeypatch, url, api_key):
 
 
 def test_qdrant_list_chunks_uses_native_scroll_cursor_without_full_scan():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     calls = []
 
@@ -394,7 +384,6 @@ def test_qdrant_list_chunks_uses_native_scroll_cursor_without_full_scan():
 
 
 def test_qdrant_reads_dense_vector_by_chunk_id():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     calls = []
 
@@ -433,7 +422,6 @@ def test_vector_start_does_not_create_collection():
 
 
 def test_qdrant_create_collection_can_enable_int8_quantization():
-    from kb_api.rag_indexer.common.config import QdrantQuantizationConfig
 
     calls = []
 
@@ -489,7 +477,6 @@ def test_qdrant_create_collection_adds_sparse_vector_when_configured():
 
 
 def test_qdrant_sparse_search_uses_sparse_vector_name():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     calls = []
 
@@ -541,7 +528,6 @@ def test_qdrant_ensure_collection_rejects_existing_dense_dimension_mismatch():
 
 
 def test_decode_chunk_cursor_returns_native_scroll_offset():
-    from kb_api.rag_indexer.clients.vector.qdrant import _decode_chunk_cursor, _encode_chunk_cursor
 
     cursor = _encode_chunk_cursor("next-offset")
 

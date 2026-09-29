@@ -19,9 +19,9 @@ RUN --mount=type=bind,source=kb_api/pyproject.toml,target=/app/kb_api/pyproject.
   cd /app/kb_api && uv sync --frozen --no-install-project --no-dev; \
   fi
 
-COPY kb_api/*.py /app/kb_api/
+COPY kb_api/__init__.py /app/kb_api/
 COPY kb_api/config /app/kb_api/config
 COPY kb_api/api /app/kb_api/api
 COPY kb_api/rag_retriever /app/kb_api/rag_retriever
 
-CMD ["/app/.venv/bin/uvicorn", "kb_api.main:app", "--host", "0.0.0.0", "--port", "6100", "--workers", "1"]
+CMD ["/app/.venv/bin/uvicorn", "kb_api.api.main:app", "--host", "0.0.0.0", "--port", "6100", "--workers", "1"]

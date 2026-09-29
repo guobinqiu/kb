@@ -25,7 +25,6 @@ class VectorConfig:
     base_url: str | None = None
     timeout: int = 30
     query_timeout: int = 10
-    write_timeout: int = 60
     init_timeout: int = 120
     drop_timeout: int = 180
     retry: RetryConfig = field(default_factory=RetryConfig)
@@ -105,7 +104,6 @@ def load_vector_config(path: str | Path | None = None) -> VectorConfig:
         base_url=selected.get("base_url"),
         timeout=timeout,
         query_timeout=int(selected.get("query_timeout", timeout)),
-        write_timeout=int(selected.get("write_timeout", timeout)),
         init_timeout=int(selected.get("init_timeout", timeout)),
         drop_timeout=int(selected.get("drop_timeout", timeout)),
         retry=retry_config,

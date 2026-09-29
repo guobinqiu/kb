@@ -5,9 +5,9 @@ import time
 
 import httpx
 
-from kb_api.rag_indexer.inference.common.config import RetryConfig
-from kb_api.rag_indexer.inference.common.tracing import get_trace_id
-from kb_api.rag_indexer.inference.common.upstream import UpstreamServiceError
+from kb_api.rag_indexer.common.config import RetryConfig
+from kb_api.rag_indexer.common.upstream import get_trace_id
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 
 
 logger = logging.getLogger("kb_api.rag_indexer.inference.providers.siliconflow")
@@ -31,7 +31,7 @@ class SiliconFlowModel:
         self.close()
 
     def _log_call(self, operation: str, started: float, response: httpx.Response | None, error: UpstreamServiceError | None = None, **context) -> None:
-        name = "dense" if operation == "embedding" else "rerank"
+        name = "dense"
         logger.log(
             logging.ERROR if error else logging.INFO,
             f"SiliconFlow {name} request {'failed' if error else 'completed'}",

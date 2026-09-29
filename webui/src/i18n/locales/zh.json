@@ -155,9 +155,12 @@
   },
   "members": {
     "userId": "用户 ID",
-    "userAccess": "工作区成员",
+    "userAccess": "成员",
+    "orgAccess": "部门",
+    "emptyOrgAccess": "暂无部门授权",
     "addUser": "添加成员",
-    "allEnterpriseUsers": "全企业用户",
+    "addOrg": "添加部门",
+    "allUsers": "全部用户",
     "searchOrganizations": "搜索部门",
     "noMatchingUsers": "暂无匹配用户",
     "selected": "已选（{count}）",
@@ -197,6 +200,11 @@
     "purgeConfirm": "永久删除空组织 {name}？此操作不可恢复。",
     "empty": "暂无组织"
   },
+  "workspaceScope": {
+    "label": "工作区",
+    "empty": "当前没有可访问的工作区",
+    "required": "请至少选择一个工作区"
+  },
   "workspace": {
     "parent": "返回上级组织",
     "searchScope": "检索范围：当前组织及下级组织",
@@ -232,6 +240,7 @@
     "org": "组织",
     "selectOrg": "请选择组织",
     "choose": "拖拽文件到此处，或点击选择",
+    "supportedTypes": "支持：{types}",
     "hint": "可一次选择多个文件，文件将归属当前工作区",
     "upload": "上传文件",
     "uploading": "上传中",

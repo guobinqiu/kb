@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from kb_api.rag_indexer.core.auth import validate_app_id
 
-
+APP_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{1,63}$")
 _current_app_id: ContextVar[str | None] = ContextVar("current_app_id", default=None)
+
+
+def validate_app_id(app_id: str) -> str:
+    if not APP_ID_PATTERN.fullmatch(app_id):
+        raise ValueError("app_id must start with a letter and contain only letters, numbers, or underscore")
+    return app_id
 
 
 def collection_name_for_app(app_id: str) -> str:

@@ -2,6 +2,10 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 
 import pytest
+from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
+from kb_api.rag_indexer.clients.vector import milvus
+from kb_api.rag_indexer.core.scope import app_collection
+from kb_api.rag_indexer.clients.vector.milvus import _metadata_payload_filter
 
 
 pytestmark = pytest.mark.unit
@@ -168,7 +172,6 @@ def _started_vector(
     init_timeout=None,
     drop_timeout=None,
 ):
-    from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
 
     vector = MilvusVectorClient(
         dense=dense or FakeDense(),
@@ -186,7 +189,6 @@ def _started_vector(
 
 
 def test_milvus_vector_resolves_local_lite_uri_from_project_root(tmp_path):
-    from kb_api.rag_indexer.clients.vector import milvus
 
     project_root = tmp_path / "rag"
     backend_dir = project_root / "backend"
@@ -200,14 +202,12 @@ def test_milvus_vector_resolves_local_lite_uri_from_project_root(tmp_path):
 
 @pytest.mark.parametrize("uri", ["http://localhost:19530", "https://cluster.example.invalid", "https://cluster.example.invalid:443"])
 def test_milvus_vector_keeps_remote_uri_unchanged(uri):
-    from kb_api.rag_indexer.clients.vector import milvus
 
     assert milvus._connection_uri(uri) == uri
 
 
 @pytest.mark.parametrize("token", [None, "test-token", "test-user:test-password"])
 def test_milvus_vector_passes_cloud_authentication(monkeypatch, token):
-    from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
 
     FakeMilvusClient.instances = []
     monkeypatch.setattr("pymilvus.MilvusClient", FakeMilvusClient)
@@ -246,7 +246,6 @@ def test_milvus_vector_passes_timeout_to_native_client(monkeypatch):
 
 
 def test_milvus_drop_collections_uses_configured_timeout_and_disables_controllable_retries():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=120)
     client.collections.add("imsdom_chunks")
@@ -309,7 +308,6 @@ def test_milvus_stop_closes_native_client():
 
 
 def test_milvus_search_and_query_use_configured_timeout():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=30)
     vector = _started_vector(client=client, timeout=30)
@@ -323,7 +321,6 @@ def test_milvus_search_and_query_use_configured_timeout():
 
 
 def test_milvus_vector_uses_split_operation_timeouts():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=10)
     vector = _started_vector(
@@ -351,7 +348,6 @@ def test_milvus_vector_uses_split_operation_timeouts():
 
 
 def test_milvus_get_total_chunks_uses_count_query_with_non_empty_filter():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=30)
     vector = _started_vector(client=client, timeout=30)
@@ -367,7 +363,6 @@ def test_milvus_get_total_chunks_uses_count_query_with_non_empty_filter():
 
 
 def test_milvus_get_total_chunks_with_file_ids_uses_file_filter():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=30)
     vector = _started_vector(client=client, timeout=30)
@@ -381,7 +376,6 @@ def test_milvus_get_total_chunks_with_file_ids_uses_file_filter():
 
 
 def test_metadata_filter_combines_file_and_workspace_ids():
-    from kb_api.rag_indexer.clients.vector.milvus import _metadata_payload_filter
 
     assert _metadata_payload_filter(file_ids=["file-a"], workspace_ids=["workspace-a", "workspace-b"]) == (
         "file_id in ['file-a'] and workspace_id in ['workspace-a', 'workspace-b']"
@@ -389,7 +383,6 @@ def test_metadata_filter_combines_file_and_workspace_ids():
 
 
 def test_milvus_list_chunks_uses_keyset_cursor():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=30)
     client.query_rows = [
@@ -429,7 +422,6 @@ def test_milvus_vector_uses_cosine_metric_for_dense_vectors():
 
 
 def test_milvus_get_dense_vector_uses_primary_key_get():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=30)
     vector = _started_vector(client=client, timeout=30)
@@ -443,7 +435,6 @@ def test_milvus_get_dense_vector_uses_primary_key_get():
 
 
 def test_milvus_add_file_chunks_serializes_same_file_writes():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     events = []
 
@@ -479,7 +470,6 @@ def test_milvus_add_file_chunks_serializes_same_file_writes():
 
 
 def test_milvus_add_file_chunks_upserts_before_cleaning_stale_tail():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     events = []
 
@@ -508,7 +498,6 @@ def test_milvus_add_file_chunks_upserts_before_cleaning_stale_tail():
 
 
 def test_milvus_delete_stale_file_chunks_filters_by_file_and_tail_chunk_index():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530", timeout=30)
     vector = _started_vector(client=client, timeout=30)
@@ -562,8 +551,6 @@ def test_milvus_ensure_app_collection_creates_collection_without_placeholder_doc
 
 
 def test_milvus_add_file_chunks_upserts_native_rows():
-    from kb_api.rag_indexer.core.scope import app_collection
-    from kb_api.rag_indexer.clients.vector import milvus
 
     client = FakeMilvusClient("http://localhost:19530")
     vector = _started_vector(client=client)
@@ -584,7 +571,6 @@ def test_milvus_add_file_chunks_upserts_native_rows():
 
 
 def test_milvus_add_file_chunks_writes_sparse_vector_when_configured():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530")
     vector = _started_vector(client=client, sparse=FakeSparse())
@@ -598,7 +584,6 @@ def test_milvus_add_file_chunks_writes_sparse_vector_when_configured():
 
 
 def test_milvus_add_file_chunks_rejects_collection_missing_sparse_field():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530")
     client.collections.add("imsdom_chunks")
@@ -627,7 +612,6 @@ def test_milvus_create_collection_adds_sparse_field_when_configured(monkeypatch)
 
 
 def test_milvus_sparse_search_uses_sparse_vector_field():
-    from kb_api.rag_indexer.core.scope import app_collection
 
     client = FakeMilvusClient("http://localhost:19530")
     vector = _started_vector(client=client, sparse=FakeSparse())

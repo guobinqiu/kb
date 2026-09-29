@@ -1,6 +1,6 @@
 <template>
   <section class="workspace-panel search-view">
-    <p class="search-scope">{{ t('search.accessibleWorkspaces') }}</p>
+    <WorkspaceScope v-model="workspaceIds" :app-id="route.params.app_id" :disabled="searching" class="search-scope" />
     <!-- Search Section -->
     <div class="search-section">
       <div class="search-row-1">
@@ -37,7 +37,7 @@
       <div class="search-row-2">
         <div class="search-input-wrap">
           <el-input v-model="query" :placeholder="t('search.placeholder')" @keyup.enter="doSearch" />
-          <el-button type="primary" :disabled="!query.trim() || searching" :loading="searching" @click="doSearch">{{ searching ? t('search.searching') : t('search.submit') }}</el-button>
+          <el-button type="primary" :disabled="!query.trim() || !workspaceIds.length || searching" :loading="searching" @click="doSearch">{{ searching ? t('search.searching') : t('search.submit') }}</el-button>
         </div>
       </div>
     </div>
@@ -47,7 +47,7 @@
       <div class="results-bar">
         <span class="results-count">{{ t('search.resultCount', { count: resultCount }) }}</span>
         <span class="results-mode">{{ t('search.mode') }}: {{ t(`search.modeValues.${lastSearch?.mode || 'dense'}`) }}</span>
-        <span class="results-mode">{{ t('search.accessibleWorkspaces') }}</span>
+        <span class="results-mode">{{ t('workspaceScope.label') }}: {{ lastSearch?.workspaceNames.join(', ') }}</span>
         <span class="results-mode">{{ t('search.files') }}: {{ lastSearch?.fileIds?.length ? lastSearch.fileIds.length : t('common.all') }}</span>
         <span v-if="searchTime !== null" class="results-elapsed">{{ t('search.elapsed') }}: {{ searchTime }}ms</span>
       </div>
@@ -73,13 +73,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import axios from '../utils/api'
 import { useAppsStore } from '../stores/apps'
 import { parseFileIds, escapeHtml } from '../utils/format'
 import { errorMessage, showToast } from '../utils/toast'
+import WorkspaceScope from '../components/WorkspaceScope.vue'
 
 const API = '/api/v1'
 const { t } = useI18n()
@@ -94,6 +95,7 @@ const rerankVisible = ref(false)
 const rerankFetchK = ref(20)
 const sparseAvailable = ref(false)
 const fileIdsText = ref('')
+const workspaceIds = ref([])
 const workspaceGroups = ref([])
 const resultCount = computed(() => workspaceGroups.value.reduce((count, workspace) => count + workspace.results.length, 0))
 const searchTime = ref(null)
@@ -112,6 +114,7 @@ function formatScore(score) {
 
 async function doSearch() {
   if (!query.value.trim()) return
+  if (!workspaceIds.value.length) return
   if (searching.value) return
   const currentRequest = ++searchRequestId
   if (rerankVisible.value && rerank.value && rerankFetchK.value < topK.value) rerankFetchK.value = topK.value
@@ -126,16 +129,15 @@ async function doSearch() {
     const fileIds = searchFileIds()
     const body = {
       query: query.value,
+      workspace_ids: [...workspaceIds.value],
       mode: mode.value,
       top_k: topK.value,
       rerank: rerankVisible.value && rerank.value,
     }
     if (fileIds.length) body.file_ids = fileIds
     if (rerankVisible.value && rerank.value) body.rerank_fetch_k = rerankFetchK.value
-    const workspaces = await appsStore.fetchWorkspaces(app.id)
-    const res = workspaces.length
-      ? await axios.post(`${API}/rag/search`, body, { headers: { 'X-App-Id': app.app_id } })
-      : { data: { results: [], elapsed_ms: 0 } }
+    const workspaces = appsStore.workspacesByApp[app.id] || []
+    const res = await axios.post(`${API}/rag/search`, body, { headers: { 'X-App-Id': app.app_id } })
     if (currentRequest !== searchRequestId) return
     const workspaceNames = new Map(workspaces.map(workspace => [workspace.id, workspace.name]))
     const grouped = new Map()
@@ -153,6 +155,7 @@ async function doSearch() {
       rerank: rerankVisible.value && rerank.value,
       rerankFetchK: rerankVisible.value && rerank.value ? rerankFetchK.value : null,
       fileIds,
+      workspaceNames: body.workspace_ids.map(id => workspaceNames.get(id) || id),
     }
     noResults.value = resultCount.value === 0
   } catch (err) {
@@ -174,6 +177,15 @@ async function fetchConfig() {
 }
 
 onMounted(fetchConfig)
+
+watch(() => route.params.app_id, () => {
+  searchRequestId++
+  searching.value = false
+  workspaceGroups.value = []
+  lastSearch.value = null
+  noResults.value = false
+  searchTime.value = null
+})
 </script>
 
 <style scoped>

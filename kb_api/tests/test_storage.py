@@ -1,9 +1,13 @@
 from types import SimpleNamespace
 from urllib.parse import urlsplit
+import hashlib
+import io
+
+import pytest
 
 from minio import Minio
 
-from kb_api.storage import MinioStorage
+from kb_api.api.services.minio import MinioStorage
 
 
 def test_presign_put_uses_internal_endpoint_for_region_lookup(monkeypatch):
@@ -26,3 +30,27 @@ def test_presign_put_uses_internal_endpoint_for_region_lookup(monkeypatch):
     assert urlsplit(url).netloc == "localhost:9000"
     assert urlsplit(url).path == "/kb-files/uploads/report.txt"
     assert contacted == ["minio:9000"]
+
+
+def test_checksum_hashes_object_content_and_closes_response(monkeypatch):
+    storage = MinioStorage("minio:9000", "access", "secret", "kb-files")
+    response = io.BytesIO(b"document content")
+    released = []
+    response.release_conn = lambda: released.append(True)
+    requested = []
+
+    def get_object(bucket, key):
+        requested.append((bucket, key))
+        return response
+
+    monkeypatch.setattr(storage.client, "get_object", get_object)
+    assert storage.checksum("s3://kb-files/uploads/a.txt") == hashlib.sha256(b"document content").hexdigest()
+    assert requested == [("kb-files", "uploads/a.txt")]
+    assert response.closed
+    assert released == [True]
+
+
+def test_storage_rejects_url_outside_its_bucket():
+    storage = MinioStorage("minio:9000", "access", "secret", "kb-files")
+    with pytest.raises(ValueError):
+        storage.stat("s3://other/uploads/a.txt")

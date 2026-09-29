@@ -19,6 +19,8 @@ from kb_api.rag_indexer.common.retry import retry_call
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 from kb_api.rag_indexer.clients.vector.embeddings import embed_documents
 from kb_api.rag_indexer.core.scope import app_collection, collection_name_for_app, current_app_id, current_collection
+import httpx
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 
 logger = logging.getLogger("kb_api.rag_indexer.core.indexing")
@@ -461,8 +463,6 @@ def _dense_vector_size_from_collection(collection_info) -> int | None:
 def _retryable_vector_error(exc: Exception) -> bool:
     if isinstance(exc, UpstreamServiceError):
         return exc.retryable
-    import httpx
-    from qdrant_client.http.exceptions import ResponseHandlingException
 
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, ResponseHandlingException)):
         return True

@@ -29,13 +29,6 @@ def current_collection() -> str:
     return collection_name_for_app(app_id)
 
 
-def current_app_id() -> str:
-    app_id = _current_app_id.get()
-    if app_id is None:
-        raise RuntimeError("app collection scope is required")
-    return app_id
-
-
 @contextmanager
 def app_collection(app_id: str):
     validate_app_id(app_id)

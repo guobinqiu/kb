@@ -78,7 +78,6 @@ def _resolve_config_path(value: str | Path | None) -> Path:
 
 
 def _env_value(name: str) -> str | None:
-    import os
 
     value = os.environ.get(name)
     return value if value else None

@@ -8,8 +8,8 @@ import httpx
 from kb_api.rag_indexer.parser.common.schema import Block
 from kb_api.rag_indexer.parser.providers.mineru.normalizer import content_list_to_blocks
 from kb_api.rag_indexer.parser.common.config import MineruCloudParserConfig
-from kb_api.rag_indexer.parser.common.retry import retry_call
-from kb_api.rag_indexer.parser.common.upstream import UpstreamServiceError, upstream_error
+from kb_api.rag_indexer.common.retry import retry_call
+from kb_api.rag_indexer.common.upstream import UpstreamServiceError, upstream_error
 
 
 class MineruCloudDocumentParser:
@@ -72,7 +72,7 @@ class MineruCloudDocumentParser:
             except httpx.HTTPError as exc:
                 raise upstream_error("parser", exc, retryable=True) from exc
 
-        return retry_call(send, self.config.retry, operation_name="parser.mineru_cloud.request")
+        return retry_call(send, self.config.retry, operation_name="parser.mineru_cloud.request", enforce_deadline=False, logger_name="parser.retry")
 
     @staticmethod
     def _remaining(deadline: float) -> float:

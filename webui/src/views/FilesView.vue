@@ -1,12 +1,23 @@
 <template>
   <section class="workspace-panel files-view">
-    <input ref="uploadInput" type="file" multiple hidden @change="uploadSelectedFiles" />
-    <input ref="replaceInput" type="file" hidden @change="replaceSelectedFile" />
-    <SectionHeader :title="t('files.title')" :description="t('files.desc')">
-      <template #actions>
-        <el-button v-if="canUploadFiles" type="primary" :icon="Upload" :loading="uploading" @click="uploadInput?.click()">{{ t('files.upload') }}</el-button>
-      </template>
-    </SectionHeader>
+    <input ref="uploadInput" type="file" :accept="supportedFileTypes" multiple hidden @change="uploadSelectedFiles" />
+    <input ref="replaceInput" type="file" :accept="supportedFileTypes" hidden @change="replaceSelectedFile" />
+    <SectionHeader :title="t('files.title')" :description="t('files.desc')" />
+    <button
+      type="button"
+      class="upload-zone"
+      :class="{ dragging }"
+      :disabled="!canUploadFiles || uploading"
+      :aria-busy="uploading"
+      @click="uploadInput?.click()"
+      @dragover.prevent="dragging = canUploadFiles && !uploading"
+      @dragleave.prevent="dragging = false"
+      @drop.prevent="dropFiles"
+    >
+      <el-icon :class="{ 'is-loading': uploading }"><Loading v-if="uploading" /><UploadFilled v-else /></el-icon>
+      <span class="upload-title">{{ uploading ? t('files.uploading') : t('files.choose') }}</span>
+      <span class="upload-types">{{ t('files.supportedTypes', { types: supportedFileTypes.split(',').join(', ') }) }}</span>
+    </button>
 
     <div class="file-toolbar">
       <span v-if="polling" class="polling-label">{{ t('files.processing') }}</span>
@@ -39,14 +50,14 @@
         </el-table-column>
         <el-table-column :label="t('common.actions')" width="156" align="right">
           <template #default="{ row }">
-            <el-tooltip v-if="canReadFiles" :content="t('workspace.viewChunks')">
-              <el-button :icon="View" circle size="small" :aria-label="t('workspace.viewChunks')" @click="viewChunks(row)" />
+            <el-tooltip :content="t('workspace.viewChunks')">
+              <el-button :icon="View" circle size="small" :disabled="!canReadFiles" :aria-label="t('workspace.viewChunks')" @click="viewChunks(row)" />
             </el-tooltip>
-            <el-tooltip v-if="canManageFile(row, 'upload')" :content="t('files.replace')">
-              <el-button :icon="Upload" circle size="small" :aria-label="t('files.replace')" :loading="replacingId === row.id" :disabled="isProcessing(row.status)" @click="chooseReplacement(row)" />
+            <el-tooltip :content="t('files.replace')">
+              <el-button :icon="Upload" circle size="small" :aria-label="t('files.replace')" :loading="replacingId === row.id" :disabled="!canManageFile(row, 'upload') || isProcessing(row.status)" @click="chooseReplacement(row)" />
             </el-tooltip>
-            <el-tooltip v-if="canManageFile(row, 'delete')" :content="t('common.delete')">
-              <el-button :icon="Delete" circle size="small" type="danger" plain :aria-label="t('common.delete')" :loading="deletingId === row.id" :disabled="isProcessing(row.status)" @click="deleteFile(row)" />
+            <el-tooltip :content="t('common.delete')">
+              <el-button :icon="Delete" circle size="small" type="danger" plain :aria-label="t('common.delete')" :loading="deletingId === row.id" :disabled="!canManageFile(row, 'delete') || isProcessing(row.status)" @click="deleteFile(row)" />
             </el-tooltip>
           </template>
         </el-table-column>
@@ -60,7 +71,7 @@
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Delete, Upload, View } from '@element-plus/icons-vue'
+import { Delete, Loading, Upload, UploadFilled, View } from '@element-plus/icons-vue'
 import RefreshButton from '../components/RefreshButton.vue'
 import SectionHeader from '../components/SectionHeader.vue'
 import { storeToRefs } from 'pinia'
@@ -71,6 +82,7 @@ import { shortTime } from '../utils/format'
 import { errorMessage, indexErrorMessage, showToast } from '../utils/toast'
 
 const PROCESSING_STATUSES = new Set(['uploaded', 'indexing', 'deleting'])
+const supportedFileTypes = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md'
 const route = useRoute()
 const router = useRouter()
 const { t, te } = useI18n()
@@ -81,6 +93,7 @@ const files = ref([])
 const workspaceId = computed(() => route.params.workspace_id)
 const loading = ref(false)
 const uploading = ref(false)
+const dragging = ref(false)
 const deletingId = ref(null)
 const replacingId = ref(null)
 const replaceTarget = ref(null)
@@ -148,6 +161,16 @@ function syncPolling() {
 
 async function uploadSelectedFiles(event) {
   const selectedFiles = Array.from(event.target.files || [])
+  event.target.value = ''
+  await uploadFiles(selectedFiles)
+}
+
+async function dropFiles(event) {
+  dragging.value = false
+  await uploadFiles(Array.from(event.dataTransfer?.files || []))
+}
+
+async function uploadFiles(selectedFiles) {
   if (!canUploadFiles.value || !workspaceId.value || !selectedFiles.length || uploading.value) return
   uploading.value = true
   const selectedWorkspaceId = workspaceId.value
@@ -162,7 +185,6 @@ async function uploadSelectedFiles(event) {
     }
   }
   uploading.value = false
-  event.target.value = ''
   if (count) {
     showToast('success', t('files.uploaded', { count }))
   }
@@ -230,6 +252,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.upload-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 150px; margin: 8px 0 16px; padding: 24px 20px; border: 1px dashed var(--el-border-color); border-radius: 6px; background: var(--el-fill-color-extra-light); color: var(--el-text-color-primary); font: inherit; cursor: pointer; }
+.upload-zone:hover:not(:disabled), .upload-zone.dragging { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.upload-zone:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+.upload-zone:disabled { cursor: not-allowed; opacity: 0.5; }
+.upload-zone[aria-busy="true"] { cursor: wait; }
+.upload-zone .el-icon { font-size: 28px; color: var(--el-color-primary); pointer-events: none; }
+.upload-title { font-size: 14px; line-height: 1.5; pointer-events: none; }
+.upload-types { max-width: 100%; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; color: var(--el-text-color-secondary); pointer-events: none; }
 .docs-title h3 { font-size: 15px; font-weight: 650; }
 .file-toolbar { display: flex; align-items: center; gap: 16px; min-height: 48px; margin-bottom: 10px; }
 .file-toolbar > .el-button { margin-left: auto; }

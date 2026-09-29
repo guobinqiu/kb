@@ -6,6 +6,7 @@ import pytest
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 from kb_api.rag_indexer.index_tasks import IndexTask, IndexTaskConsumer, process_index_task, task_result
 from kb_api.rag_indexer.core.scope import collection_name_for_app
+from kb_api.rag_indexer.core.index.errors import index_stage
 
 
 class FakeVector:
@@ -105,6 +106,7 @@ def test_index_task_requires_storage_fields():
 
 
 def test_task_result_preserves_retryable_error(monkeypatch):
+
     error = UpstreamServiceError(
         service="parser",
         error="temporarily unavailable",
@@ -112,7 +114,11 @@ def test_task_result_preserves_retryable_error(monkeypatch):
         status_code=503,
         trace_id="a" * 32,
     )
-    monkeypatch.setattr("kb_api.rag_indexer.index_tasks.process_index_task", lambda state, task: (_ for _ in ()).throw(error))
+    def fail(state, task):
+        with index_stage("embedding", "inference"):
+            raise error
+
+    monkeypatch.setattr("kb_api.rag_indexer.index_tasks.process_index_task", fail)
 
     result = task_result(object(), {
         "operation": "delete",

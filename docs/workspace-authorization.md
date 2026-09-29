@@ -14,7 +14,7 @@ App 是企业及数据隔离边界，下有一套组织树、多个工作区。�
 | --- | --- | --- |
 | users | id, name, org_id, role | 账号、登录名、组织归属、企业角色 |
 | orgs | id, app_id, parent_id, name | 企业组织树 |
-| workspaces | id, app_id, name | 知识工作区 |
+| workspaces | id, app_id, name, created_by | 知识工作区及创建者 |
 | workspace_user | id, workspace_id, user_id, role | 个人授权，role 为 admin/editor/viewer |
 | workspace_org | id, workspace_id, org_id, role | 组织授权，role 为 editor/viewer |
 
@@ -26,12 +26,12 @@ App 是企业及数据隔离边界，下有一套组织树、多个工作区。�
 
 ## 固定角色与操作
 
-操作常量和 `WORKSPACE_ROLE_PERMISSIONS` 固定在 `kb_api/permissions.py`，接口使用 `has_workspace_permission` 检查具体操作；数据库保存授权对象和 role 字符串。
+操作常量和 `WORKSPACE_ROLE_PERMISSIONS` 固定在 `kb_api/api/permissions.py`，接口使用 `has_workspace_permission` 检查具体操作；数据库保存授权对象和 role 字符串。
 
 | 操作 | admin | editor | viewer |
 | --- | --- | --- | --- |
 | workspace.update | 是 | 否 | 否 |
-| workspace.delete | 是 | 否 | 否 |
+| workspace.delete | 仅创建者 | 否 | 否 |
 | workspace.members.manage | 是 | 否 | 否 |
 | workspace.files.read | 是 | 是 | 是 |
 | workspace.files.upload | 新增、替换全部文件 | 新增、替换自己上传的文件 | 否 |
@@ -39,6 +39,8 @@ App 是企业及数据隔离边界，下有一套组织树、多个工作区。�
 | workspace.search | 是 | 是 | 是 |
 
 搜索权限同时适用于对话引用资料。`workspace.create` 由平台或企业角色决定。前端使用后端返回的 permissions 控制按钮；后端校验操作权限，替换和删除文件时同时核对 `created_by`。
+
+删除工作区仅允许平台 owner，或具有工作区 admin 角色的创建者。企业 admin 身份本身不授予删除权限。平台 owner 可调用删除接口处理未加入的工作区，不因此取得该工作区的内容权限。工作区仍有未删除文件时拒绝删除。`created_by` 记录创建者，不随成员角色调整改变。
 
 以上角色针对用户身份。企业 API Key 按 App 范围访问检索。
 

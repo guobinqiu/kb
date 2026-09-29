@@ -7,12 +7,11 @@ from typing import TypeVar
 
 from kb_api.rag_indexer.common.config import RetryConfig
 from kb_api.rag_indexer.common.deadline import check_deadline
-from kb_api.rag_indexer.common.tracing import get_trace_id
+from kb_api.rag_indexer.common.upstream import get_trace_id
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 
 
 T = TypeVar("T")
-logger = logging.getLogger("rag.retry")
 
 
 def retry_call(
@@ -21,17 +20,20 @@ def retry_call(
     *,
     should_retry: Callable[[Exception], bool] | None = None,
     operation_name: str = "operation",
+    enforce_deadline: bool = True,
+    logger_name: str = "rag.retry",
 ) -> T:
     attempts = max(1, config.max_attempts)
     for attempt in range(1, attempts + 1):
         try:
-            check_deadline()
+            if enforce_deadline:
+                check_deadline()
             return operation()
         except Exception as exc:
             retryable = _is_retryable(exc, should_retry)
             if attempt >= attempts or not retryable:
                 raise
-            logger.warning(
+            logging.getLogger(logger_name).warning(
                 "Retryable operation failed; retrying",
                 extra={
                     "event": "retry_attempt",
@@ -43,7 +45,8 @@ def retry_call(
                 },
             )
             if config.interval_seconds:
-                check_deadline()
+                if enforce_deadline:
+                    check_deadline()
                 time.sleep(config.interval_seconds)
     raise RuntimeError("retry attempts exhausted")
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from openai import APIConnectionError, APIStatusError, RateLimitError
 from tenacity import (
     RetryCallState,
     retry,
@@ -92,8 +93,6 @@ def _reset_rag_retry_for_tests() -> None:
 
 def is_llm_retryable(exc: Exception) -> bool:
     """LLM 调用的可重试异常：限流、5xx、连接错误。"""
-    # 延迟导入：避免在 httpx mock 场景下 openai 在 import 时尝试继承 httpx.AsyncClient
-    from openai import APIConnectionError, APIStatusError, RateLimitError
     if isinstance(exc, RateLimitError):
         return True
     if isinstance(exc, APIStatusError) and exc.status_code >= 500:

@@ -13,6 +13,7 @@ from kb_api.rag_indexer.parser.documents.parser import DocumentParser
 from kb_api.rag_indexer.parser.common.schema import Block
 from kb_api.rag_indexer.parser.providers.mineru.cloud_parser import MineruCloudDocumentParser
 from kb_api.rag_indexer.parser.common.config import ParserConfig
+from kb_api.rag_indexer.parser.providers.mineru import api_parser
 
 
 class ParserService:
@@ -21,9 +22,7 @@ class ParserService:
     def __init__(self, config: ParserConfig):
         self.config = config
         self.pdf_parser = self._build_pdf_parser(config)
-        from kb_api.rag_indexer.parser.providers.mineru.api_parser import MineruApiDocumentParser
-
-        self.office_parser = MineruApiDocumentParser(replace(config.mineru, enable=True, tier="flash"))
+        self.office_parser = api_parser.MineruApiDocumentParser(replace(config.mineru, enable=True, tier="flash"))
         self.document_parser = DocumentParser()
         self._parse_lock = threading.Lock()
         self.ready = False
@@ -32,9 +31,7 @@ class ParserService:
         if config.active == "mineru_cloud":
             return MineruCloudDocumentParser(config.mineru_cloud)
         if config.active == "mineru":
-            from kb_api.rag_indexer.parser.providers.mineru.api_parser import MineruApiDocumentParser
-
-            return MineruApiDocumentParser(config.mineru)
+            return api_parser.MineruApiDocumentParser(config.mineru)
         raise ValueError(f"Unsupported parser backend: {config.active}")
 
     def start(self) -> None:

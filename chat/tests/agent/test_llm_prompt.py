@@ -5,12 +5,11 @@ import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 
 import chat.src.agent.nodes.llm as llm_mod
-from chat.src.config import Settings
+from chat.src.config import Settings, _load_settings
 
 
 @pytest.mark.unit
 def test_prompt_is_loaded_from_config():
-    from chat.src.config import _load_settings
 
     values = _load_settings()
     assert values["prompt"].strip()
