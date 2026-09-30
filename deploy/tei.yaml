@@ -13,7 +13,7 @@ services:
     container_name: tei_dense
     <<: *infra-service
     image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
-    command: ["--model-id", "/model"]
+    command: ["--model-id", "/model", "--served-model-name", "BAAI/bge-m3"]
     gpus: all
     ports:
       - "8081:80"
@@ -28,7 +28,7 @@ services:
     container_name: tei_rerank
     <<: *infra-service
     image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
-    command: ["--model-id", "/model"]
+    command: ["--model-id", "/model", "--served-model-name", "BAAI/bge-reranker-v2-m3"]
     gpus: all
     ports:
       - "8082:80"
