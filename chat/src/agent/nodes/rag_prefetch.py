@@ -30,11 +30,12 @@ async def rag_prefetch_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"rag_context": ""}
 
     # Find the last HumanMessage
-    query = ""
-    for msg in reversed(messages):
-        if hasattr(msg, "type") and msg.type == "human":
-            query = msg.content if isinstance(msg.content, str) else str(msg.content)
-            break
+    query = state.get("search_query") or ""
+    if not query:
+        for msg in reversed(messages):
+            if hasattr(msg, "type") and msg.type == "human":
+                query = msg.content if isinstance(msg.content, str) else str(msg.content)
+                break
 
     if not query.strip():
         return {"rag_context": ""}

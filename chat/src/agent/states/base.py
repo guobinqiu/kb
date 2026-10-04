@@ -11,6 +11,7 @@ class AgentState(TypedDict, total=False):
     - 其余字段：perf / token 计数。
     """
     messages:     Annotated[list, operator.add]
+    search_query: str
     rag_context:  str
     workspace_ids: list[str]
     tool_results: list

@@ -58,6 +58,27 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_rag_prefetch_uses_rewritten_search_query(monkeypatch):
+    captured = {}
+
+    class _C:
+        async def search(self, req, **kwargs):
+            captured["query"] = req.query
+            return type("R", (), {"success": True, "documents": [], "elapsed_ms": 1.0})()
+
+    monkeypatch.setattr("chat.src.rag.client.get_rag_client", lambda: _C())
+    monkeypatch.setattr(auth_mod, "get_current_credential", lambda: AppCredential(app_id="imsdom", api_key=""))
+
+    await rag_prefetch_node({
+        "messages": [HumanMessage(content="这四个人能住吗？")],
+        "search_query": "家庭房能否入住两名成人、一个11岁儿童和一个1岁婴儿？",
+        "workspace_ids": ["workspace-1"],
+    })
+
+    assert captured["query"] == "家庭房能否入住两名成人、一个11岁儿童和一个1岁婴儿？"
+
+
+@pytest.mark.asyncio
 async def test_rag_prefetch_keeps_workspace_results_separate(monkeypatch):
 
     requested = []
