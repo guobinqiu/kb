@@ -39,7 +39,7 @@ def make_vector(backend, events, after):
     dense = SimpleNamespace(embed_documents=call("dense", [[0.1, 0.2]]))
     sparse = SimpleNamespace(embed_documents=call("sparse", [{1: 0.5}]))
     cls = milvus.MilvusVectorClient if backend == "milvus" else qdrant.QdrantVectorClient
-    vector = cls(dense=dense, sparse=sparse, timeout=30)
+    vector = cls(dense=dense, timeout=30) if backend == "milvus" else cls(dense=dense, sparse=sparse, timeout=30)
     sdk = Mock()
     sdk.has_collection.return_value = False
     sdk.upsert = call("upsert", None)
@@ -51,14 +51,13 @@ def make_vector(backend, events, after):
     return vector
 
 
-@pytest.mark.parametrize("backend", ["milvus", "qdrant"])
 @pytest.mark.parametrize("failure", [None, "dense", "sparse"])
-def test_index_embeddings_run_concurrently_with_request_context(backend, failure):
+def test_qdrant_index_embeddings_run_concurrently_with_request_context(failure):
 
     rendezvous = Barrier(2, timeout=2)
     trace = ContextVar("test_trace")
     error = RuntimeError("embedding failed")
-    vector = make_vector(backend, [], lambda name: None)
+    vector = make_vector("qdrant", [], lambda name: None)
 
     def embed(name, result):
         assert current_collection() == "test_chunks"
@@ -291,7 +290,10 @@ def test_milvus_index_validation_clips_timeout_and_disables_controllable_retries
     monkeypatch.setattr(deadline.time, "monotonic", lambda: 0.0)
     vector = make_vector("milvus", [], lambda name: None)
     vector.client.has_collection.return_value = True
-    vector.client.describe_collection.return_value = {"fields": [{"name": "sparse_vector"}]}
+    vector.client.describe_collection.return_value = {
+        "fields": [{"name": "sparse_vector"}],
+        "functions": [{"name": "text_bm25"}],
+    }
     with app_collection("test"), deadline.index_deadline(3):
         vector.add_file_chunks(CHUNKS, "file")
     for name in ["has_collection", "describe_collection"]:

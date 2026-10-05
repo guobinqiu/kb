@@ -5,7 +5,7 @@ import base64
 import json
 from pathlib import Path
 
-from pymilvus import DataType, MilvusClient
+from pymilvus import DataType, Function, FunctionType, MilvusClient
 
 try:
     import grpc
@@ -13,7 +13,7 @@ except ImportError:
     grpc = None
 
 from kb_api.rag_retriever.common.config import RetryConfig
-from kb_api.rag_retriever.common.contracts import Dense, Sparse
+from kb_api.rag_retriever.common.contracts import Dense
 from kb_api.rag_retriever.common.retry import retry_call
 from kb_api.rag_retriever.common.upstream import UpstreamServiceError
 from kb_api.rag_retriever.core.scope import app_collection, collection_name_for_app, current_collection
@@ -29,7 +29,6 @@ class MilvusVectorClient:
     def __init__(
         self,
         dense: Dense | None = None,
-        sparse: Sparse | None = None,
         uri: str | None = None,
         timeout: int | None = None,
         query_timeout: int | None = None,
@@ -41,7 +40,6 @@ class MilvusVectorClient:
         if dense is None:
             raise ValueError("dense is required")
         self.dense = dense
-        self.sparse = sparse
         self.uri = uri or "http://localhost:19530"
         self.timeout = timeout
         self.query_timeout = query_timeout if query_timeout is not None else timeout
@@ -93,7 +91,7 @@ class MilvusVectorClient:
         }
 
     def supports_sparse_vector(self) -> bool:
-        return self.sparse is not None
+        return True
 
     def ensure_app_collection(self, app_id: str) -> str:
         collection_name = collection_name_for_app(app_id)
@@ -135,17 +133,9 @@ class MilvusVectorClient:
     def search_dense(self, query: str, limit: int, metadata_filter: str) -> list[dict]:
         return self.query_dense_vector(self.encode_dense_query(query), limit, metadata_filter)
 
-    def encode_sparse_query(self, query: str):
-        if self.sparse is None:
-            raise RuntimeError("sparse is not configured")
-        return self.sparse.embed_query(query)
-
-    def query_sparse_vector(self, query_vector, limit: int, metadata_filter: str) -> list[dict]:
-        rows = self._single_vector_search_with_data("sparse", query_vector, limit, metadata_filter)
-        return _documents_from_milvus_rows(rows, "sparse")
-
     def search_sparse(self, query: str, limit: int, metadata_filter: str) -> list[dict]:
-        return self.query_sparse_vector(self.encode_sparse_query(query), limit, metadata_filter)
+        rows = self._single_vector_search_with_data("sparse", query, limit, metadata_filter)
+        return _documents_from_milvus_rows(rows, "sparse")
 
     def ensure_collections(self, collection_name: str | None = None) -> None:
         client = self._client()
@@ -202,15 +192,23 @@ class MilvusVectorClient:
     def _collection_schema(self):
         schema = MilvusClient.create_schema(auto_id=False, enable_dynamic_field=True)
         schema.add_field(field_name="pk", datatype=DataType.VARCHAR, is_primary=True, max_length=64)
-        schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
+        schema.add_field(
+            field_name="text", datatype=DataType.VARCHAR, max_length=65535,
+            enable_analyzer=True, analyzer_params={"tokenizer": "jieba"},
+        )
         schema.add_field(field_name="file_id", datatype=DataType.VARCHAR, max_length=128)
         schema.add_field(field_name="workspace_id", datatype=DataType.VARCHAR, max_length=128)
         schema.add_field(field_name="chunk_index", datatype=DataType.INT64)
         schema.add_field(field_name="filename", datatype=DataType.VARCHAR, max_length=1024)
         schema.add_field(field_name="created_at", datatype=DataType.VARCHAR, max_length=64, nullable=True)
         schema.add_field(field_name=self._dense_vector_field(), datatype=DataType.FLOAT_VECTOR, dim=self._dense_vector_size())
-        if self.sparse is not None:
-            schema.add_field(field_name=self._sparse_vector_field(), datatype=DataType.SPARSE_FLOAT_VECTOR)
+        schema.add_field(field_name=self._sparse_vector_field(), datatype=DataType.SPARSE_FLOAT_VECTOR)
+        schema.add_function(Function(
+            name="text_bm25",
+            function_type=FunctionType.BM25,
+            input_field_names=["text"],
+            output_field_names=[self._sparse_vector_field()],
+        ))
         return schema
 
     def _collection_index_params(self):
@@ -221,8 +219,7 @@ class MilvusVectorClient:
 
     def _index_specs(self) -> list[tuple[str, dict]]:
         specs = [(self._dense_vector_field(), self._dense_index_params())]
-        if self.sparse is not None:
-            specs.append((self._sparse_vector_field(), self._sparse_index_params()))
+        specs.append((self._sparse_vector_field(), self._sparse_index_params()))
         specs.append(("file_id", {"index_type": "INVERTED"}))
         specs.append(("chunk_index", {"index_type": "INVERTED"}))
         specs.append(("workspace_id", {"index_type": "INVERTED"}))
@@ -253,20 +250,23 @@ class MilvusVectorClient:
         client = self._client()
         if not client.has_collection(collection_name, **self._init_request_options()):
             return
-        fields = _field_names_from_collection(client.describe_collection(collection_name, **self._init_request_options()))
-        if self.sparse is not None and self._sparse_vector_field() not in fields:
-            raise ValueError(f"Milvus collection {collection_name} missing sparse_vector field; recreate app database after enabling sparse")
+        collection = client.describe_collection(collection_name, **self._init_request_options())
+        fields = _field_names_from_collection(collection)
+        if self._sparse_vector_field() not in fields:
+            raise ValueError(f"Milvus collection {collection_name} missing BM25 sparse_vector field; recreate app database")
+        if not _has_bm25_function(collection):
+            raise ValueError(f"Milvus collection {collection_name} missing text_bm25 function; recreate app database")
 
     def _search_params_for_mode(self, mode: str):
         if mode == "sparse":
-            return {"metric_type": "IP", "params": {}}
+            return {"metric_type": "BM25", "params": {}}
         return {"metric_type": DENSE_METRIC, "params": {}}
 
     def _dense_index_params(self) -> dict:
         return {"metric_type": DENSE_METRIC, "index_type": "AUTOINDEX", "params": {}}
 
     def _sparse_index_params(self) -> dict:
-        return {"metric_type": "IP", "index_type": "AUTOINDEX", "params": {}}
+        return {"metric_type": "BM25", "index_type": "SPARSE_INVERTED_INDEX", "params": {}}
 
     def _single_vector_search_with_data(self, mode: str, query_data, limit: int, metadata_filter: str):
         self._require_ready()
@@ -307,6 +307,10 @@ def _dense_vector_size_from_collection(collection: dict, field_name: str) -> int
 
 def _field_names_from_collection(collection: dict) -> set[str]:
     return {str(field.get("name") or field.get("field_name")) for field in collection.get("fields", [])}
+
+
+def _has_bm25_function(collection: dict) -> bool:
+    return any(function.get("name") == "text_bm25" for function in collection.get("functions", []))
 
 
 def _documents_from_milvus_rows(rows, mode: str) -> list[dict]:

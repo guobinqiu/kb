@@ -20,6 +20,26 @@ def test_milvus_search_filter_scopes_files_and_workspaces():
         vector.build_metadata_filter(workspace_ids=[])
 
 
+def test_milvus_sparse_search_uses_database_bm25_without_sparse_model(monkeypatch):
+    vector = MilvusVectorClient(dense=object())
+    captured = {}
+
+    class Client:
+        def search(self, collection_name, **kwargs):
+            captured["collection_name"] = collection_name
+            captured.update(kwargs)
+            return []
+
+    monkeypatch.setattr(vector, "_client", lambda: Client())
+    with app_collection("acme"):
+        vector.search_sparse("酒店接机", 5, "")
+
+    assert vector.supports_sparse_vector() is True
+    assert captured["data"] == ["酒店接机"]
+    assert captured["anns_field"] == "sparse_vector"
+    assert captured["search_params"] == {"metric_type": "BM25", "params": {}}
+
+
 def test_qdrant_search_filter_scopes_files_and_workspaces():
     vector = QdrantVectorClient(dense=object())
 

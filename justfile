@@ -23,7 +23,7 @@ mineru action:
 	just _mineru-{{action}}
 
 _infra-up: _network-up
-	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml up -d
+	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile milvus up -d
 
 _infra-down:
 	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml down

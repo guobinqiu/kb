@@ -80,7 +80,6 @@ def _build_state(config: AppConfig):
     elif vector_backend == "milvus":
         vector = MilvusVectorClient(
             dense=inference.dense,
-            sparse=inference.sparse,
             uri=config.services.vector.base_url,
             timeout=config.services.vector.timeout,
             query_timeout=config.services.vector.query_timeout,

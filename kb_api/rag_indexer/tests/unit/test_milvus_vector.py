@@ -30,22 +30,6 @@ class FakeDense:
         return [[0.1, 0.2, 0.3] for _ in texts]
 
 
-class FakeSparse:
-    ready = True
-
-    def __init__(self):
-        self.queries = []
-        self.documents = []
-
-    def embed_query(self, query):
-        self.queries.append(query)
-        return {1: 0.5, 8: 1.0}
-
-    def embed_documents(self, texts):
-        self.documents.append(list(texts))
-        return [{1: 0.5, 8: 1.0} for _ in texts]
-
-
 class FakeMilvusClient:
     instances = []
 
@@ -90,7 +74,10 @@ class FakeMilvusClient:
     def describe_collection(self, collection_name, timeout=None, **kwargs):
         if hasattr(self, "collection_schema"):
             return self.collection_schema
-        return {"fields": [{"name": "pk"}, {"name": "text"}, {"name": "vector"}, {"name": "sparse_vector"}]}
+        return {
+            "fields": [{"name": "pk"}, {"name": "text"}, {"name": "vector"}, {"name": "sparse_vector"}],
+            "functions": [{"name": "text_bm25", "type": milvus.pymilvus.FunctionType.BM25}],
+        }
 
     def load_collection(self, collection_name, timeout=None, **kwargs):
         self.loaded.append((collection_name, timeout))
@@ -164,7 +151,6 @@ class FakeIndexParams:
 def _started_vector(
     client=None,
     dense=None,
-    sparse=None,
     uri="http://localhost:19530",
     timeout=None,
     query_timeout=None,
@@ -175,7 +161,6 @@ def _started_vector(
 
     vector = MilvusVectorClient(
         dense=dense or FakeDense(),
-        sparse=sparse,
         uri=uri,
         timeout=timeout,
         query_timeout=query_timeout,
@@ -213,7 +198,7 @@ def test_milvus_vector_passes_cloud_authentication(monkeypatch, token):
     monkeypatch.setattr("pymilvus.MilvusClient", FakeMilvusClient)
     uri = "https://cluster.example.invalid:443"
 
-    vector = MilvusVectorClient(FakeDense(), None, uri, 30, token=token)
+    vector = MilvusVectorClient(FakeDense(), uri=uri, timeout=30, token=token)
 
     assert FakeMilvusClient.instances == []
     client = vector._client()
@@ -529,10 +514,10 @@ def test_milvus_standalone_uses_explicit_native_index_params():
     assert vector._index_params_for_mode("dense") == {"metric_type": "COSINE", "index_type": "AUTOINDEX", "params": {}}
 
 
-def test_milvus_sparse_index_uses_cloud_compatible_autoindex():
-    vector = _started_vector(sparse=FakeSparse())
+def test_milvus_bm25_index_uses_sparse_inverted_index():
+    vector = _started_vector()
 
-    assert dict(vector._index_specs())["sparse_vector"] == {"metric_type": "IP", "index_type": "AUTOINDEX", "params": {}}
+    assert dict(vector._index_specs())["sparse_vector"] == {"metric_type": "BM25", "index_type": "SPARSE_INVERTED_INDEX", "params": {}}
 
 
 def test_milvus_ensure_app_collection_creates_collection_without_placeholder_documents(monkeypatch):
@@ -570,17 +555,17 @@ def test_milvus_add_file_chunks_upserts_native_rows():
     assert client.flushed[-1] == ("imsdom_chunks", 30)
 
 
-def test_milvus_add_file_chunks_writes_sparse_vector_when_configured():
+def test_milvus_add_file_chunks_leaves_sparse_generation_to_bm25_function():
 
     client = FakeMilvusClient("http://localhost:19530")
-    vector = _started_vector(client=client, sparse=FakeSparse())
+    vector = _started_vector(client=client)
 
     with app_collection("imsdom"):
         vector.add_file_chunks([
             {"id": "chunk-a", "content": "hello", "metadata": {"filename": "a.txt", "chunk_index": 0}},
         ], "file1")
 
-    assert client.upserted[0][1][0]["sparse_vector"] == {1: 0.5, 8: 1.0}
+    assert "sparse_vector" not in client.upserted[0][1][0]
 
 
 def test_milvus_add_file_chunks_rejects_collection_missing_sparse_field():
@@ -588,36 +573,64 @@ def test_milvus_add_file_chunks_rejects_collection_missing_sparse_field():
     client = FakeMilvusClient("http://localhost:19530")
     client.collections.add("imsdom_chunks")
     client.collection_schema = {"fields": [{"name": "pk"}, {"name": "text"}, {"name": "vector"}]}
-    sparse = FakeSparse()
-    vector = _started_vector(client=client, sparse=sparse)
+    vector = _started_vector(client=client)
 
-    with app_collection("imsdom"), pytest.raises(ValueError, match="missing sparse_vector field"):
+    with app_collection("imsdom"), pytest.raises(ValueError, match="missing BM25 sparse_vector field"):
         vector.add_file_chunks([
             {"id": "chunk-a", "content": "hello", "metadata": {"filename": "a.txt", "chunk_index": 0}},
         ], "file1")
 
-    assert sparse.documents == []
+    assert vector.dense.documents == []
     assert client.upserted == []
 
 
-def test_milvus_create_collection_adds_sparse_field_when_configured(monkeypatch):
+def test_milvus_add_file_chunks_rejects_external_sparse_collection_without_bm25_function():
+    client = FakeMilvusClient("http://localhost:19530")
+    client.collections.add("imsdom_chunks")
+    client.collection_schema = {
+        "fields": [{"name": "pk"}, {"name": "text"}, {"name": "vector"}, {"name": "sparse_vector"}],
+        "functions": [],
+    }
+    vector = _started_vector(client=client)
+
+    with app_collection("imsdom"), pytest.raises(ValueError, match="missing text_bm25 function"):
+        vector.add_file_chunks([
+            {"id": "chunk-a", "content": "hello", "metadata": {"filename": "a.txt", "chunk_index": 0}},
+        ], "file1")
+
+    assert vector.dense.documents == []
+    assert client.upserted == []
+
+
+def test_milvus_create_collection_adds_bm25_function(monkeypatch):
     FakeMilvusClient.instances = []
     monkeypatch.setattr("pymilvus.MilvusClient", FakeMilvusClient)
 
-    vector = _started_vector(sparse=FakeSparse())
+    vector = _started_vector()
     vector.ensure_app_collection("imsdom")
 
-    fields = {field["field_name"]: field for field in FakeMilvusClient.instances[0].created[0]["schema"].fields}
+    schema = FakeMilvusClient.instances[0].created[0]["schema"]
+    fields = {field["field_name"]: field for field in schema.fields}
+    assert fields["text"]["enable_analyzer"] is True
+    assert fields["text"]["analyzer_params"] == {"tokenizer": "jieba"}
     assert "sparse_vector" in fields
+    assert [function.to_dict() for function in schema.functions] == [{
+        "name": "text_bm25",
+        "description": "",
+        "type": milvus.pymilvus.FunctionType.BM25,
+        "input_field_names": ["text"],
+        "output_field_names": ["sparse_vector"],
+        "params": {},
+    }]
 
 
-def test_milvus_sparse_search_uses_sparse_vector_field():
+def test_milvus_sparse_search_sends_raw_query_to_bm25_function():
 
     client = FakeMilvusClient("http://localhost:19530")
-    vector = _started_vector(client=client, sparse=FakeSparse())
+    vector = _started_vector(client=client)
 
     with app_collection("imsdom"):
         vector.search_sparse("query", 3, "")
 
     assert client.searches[0][1]["anns_field"] == "sparse_vector"
-    assert client.searches[0][1]["data"] == [{1: 0.5, 8: 1.0}]
+    assert client.searches[0][1]["data"] == ["query"]

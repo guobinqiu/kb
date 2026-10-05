@@ -116,7 +116,6 @@ def load_retriever() -> Retriever:
     elif vector_config.provider == "milvus":
         vector = MilvusVectorClient(
             dense=inference.dense,
-            sparse=inference.sparse,
             uri=vector_config.base_url,
             timeout=vector_config.timeout,
             query_timeout=vector_config.query_timeout,
