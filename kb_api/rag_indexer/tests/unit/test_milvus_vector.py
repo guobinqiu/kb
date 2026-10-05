@@ -327,7 +327,7 @@ def test_milvus_vector_uses_split_operation_timeouts():
     assert client.indexed[0]["timeout"] == 120
     assert client.loaded[0][1] == 120
     assert client.upserted[0][2] == 60
-    assert client.flushed[0][1] == 60
+    assert client.flushed == []
     assert client.searches[0][1]["timeout"] == 10
     assert client.dropped[0][1]["timeout"] == 180
 
@@ -435,10 +435,6 @@ def test_milvus_add_file_chunks_serializes_same_file_writes():
             events.append("upsert")
             return super().upsert(collection_name, data, timeout)
 
-        def flush(self, collection_name, timeout=None, **kwargs):
-            events.append("flush")
-            return super().flush(collection_name, timeout)
-
     client = SlowDeleteClient("http://localhost:19530", timeout=30)
     vector = _started_vector(client=client, timeout=30)
     chunks = [{"id": "chunk-a", "content": "hello", "metadata": {"filename": "a.txt", "chunk_index": 0}}]
@@ -451,7 +447,7 @@ def test_milvus_add_file_chunks_serializes_same_file_writes():
         futures = [executor.submit(add_chunks) for _ in range(2)]
         [future.result() for future in futures]
 
-    assert events == ["upsert", "flush", "delete", "upsert", "flush", "delete"]
+    assert events == ["upsert", "delete", "upsert", "delete"]
 
 
 def test_milvus_add_file_chunks_upserts_before_cleaning_stale_tail():
@@ -552,7 +548,7 @@ def test_milvus_add_file_chunks_upserts_native_rows():
     assert client.upserted[0][1][0]["file_id"] == "file1"
     assert client.upserted[0][1][0]["workspace_id"] == "workspace-a"
     assert client.upserted[0][1][0]["vector"] == [0.1, 0.2, 0.3]
-    assert client.flushed[-1] == ("imsdom_chunks", 30)
+    assert client.flushed == []
 
 
 def test_milvus_add_file_chunks_leaves_sparse_generation_to_bm25_function():

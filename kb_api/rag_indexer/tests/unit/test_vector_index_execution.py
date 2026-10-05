@@ -88,7 +88,7 @@ def test_qdrant_index_embeddings_run_concurrently_with_request_context(failure):
 
 
 @pytest.mark.parametrize("backend,stages", [
-    ("milvus", ["dense", "upsert", "flush", "query", "delete", "flush"]),
+    ("milvus", ["dense", "upsert", "query", "delete"]),
     ("qdrant", ["dense", "upsert", "count", "delete"]),
 ])
 def test_index_stops_after_each_expired_stage(monkeypatch, backend, stages):
@@ -114,7 +114,7 @@ def test_index_stops_after_each_expired_stage(monkeypatch, backend, stages):
 
 
 @pytest.mark.parametrize("backend,stages", [
-    ("milvus", ["dense", "upsert", "flush", "query", "delete"]),
+    ("milvus", ["dense", "upsert", "query", "delete"]),
     ("qdrant", ["dense", "upsert", "count", "delete"]),
 ])
 def test_index_propagates_original_failure_without_retry(backend, stages):
@@ -173,7 +173,7 @@ def test_index_clips_sdk_timeouts_and_preserves_ids(monkeypatch, backend):
         assert vector.add_file_chunks(CHUNKS, "file") == 1
         assert vector.add_file_chunks(CHUNKS, "file") == 1
     sdk = vector.client
-    for name in (["upsert", "flush", "query", "delete"] if backend == "milvus" else ["upsert", "count", "delete"]):
+    for name in (["upsert", "query", "delete"] if backend == "milvus" else ["upsert", "count", "delete"]):
         for call in getattr(sdk, name).call_args_list:
             assert call.kwargs["timeout"] == 3
             if backend == "milvus":

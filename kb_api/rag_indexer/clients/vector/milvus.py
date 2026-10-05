@@ -109,11 +109,6 @@ class MilvusVectorClient:
                     ),
                     "milvus.upsert",
                 )
-                check_deadline()
-                self._write_operation(
-                    lambda: self._client().flush(self._chunks_collection(), **self._write_request_options()),
-                    "milvus.flush",
-                )
             check_deadline()
             self.delete_stale_file_chunks(file_id, len(chunks))
             check_deadline()
@@ -437,10 +432,6 @@ class MilvusVectorClient:
                 check_deadline()
             delete = lambda: self._client().delete(self._chunks_collection(), ids=ids, **self._write_request_options())
             self._write_operation(delete, "milvus.delete") if indexing else delete()
-            if indexing:
-                check_deadline()
-            flush = lambda: self._client().flush(self._chunks_collection(), **self._write_request_options())
-            self._write_operation(flush, "milvus.flush") if indexing else flush()
         return len(ids)
 
     def _chunks_collection(self) -> str:
