@@ -164,7 +164,7 @@ database_url: postgresql://rag:rag@postgres:5432/rag
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-新项目使用容器名 `postgres`、`qdrant`、`minio`、`rabbitmq`、`jaeger`、`jaeger-init`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`nginx`。同名旧容器需先处理。
+新项目使用容器名 `postgres`、`etcd`、`milvus`、`minio`、`rabbitmq`、`jaeger`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`nginx`。同名旧容器需先处理。
 
 本次 233 有一个已停止的旧 `minio` 容器，实际处理命令为：
 
@@ -174,17 +174,19 @@ docker rename minio minio-legacy-stopped
 
 仅在存在该旧容器时执行。此命令保留旧容器和数据，不应对正在使用的 KB MinIO 执行。
 
-基础服务需要端口 `5432`、`5672`、`15672`、`6333`、`6334`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。已有 GPU 服务使用 `8000`、`8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
+基础服务需要端口 `2379`、`5432`、`5672`、`15672`、`9000`、`9001`、`19530`、`9091`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。已有 GPU 服务使用 `8000`、`8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
 
 ## 7. 启动基础服务
 
 ```bash
 cd ~/workspace/kb
+sudo install -d -o 10001 -g 10001 jaeger_data jaeger_data/keys jaeger_data/values
+sudo install -d -o 999 -g 999 milvus_data/standalone/milvus milvus_data/standalone/milvus/data
 just infra up
 docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml ps -a
 ```
 
-默认启动 PostgreSQL、Qdrant、MinIO、RabbitMQ、Collector、Jaeger，不启动 Milvus。`jaeger-init` 正常状态为 `Exited (0)`。
+默认启动 PostgreSQL、etcd、Milvus、MinIO、RabbitMQ、Collector 和 Jaeger。
 
 如果 RabbitMQ 拉取中断或长时间没有进展，本次 233 已验证以下方式可用：
 
@@ -298,4 +300,4 @@ just webui up
 
 仅前端依赖发生变化时，在 `just webui up` 前重新执行 `npm --prefix webui ci`。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just infra up`。
 
-项目数据分别保存在 `pg_data`、`qdrant_data`、`minio_data`、`rabbitmq_data`、`jaeger_data` 下；模型通过 `models` 链接复用。`.dockerignore` 已排除这些数据目录和 `.env`，数据库启动后仍可正常构建应用镜像。
+项目数据分别保存在 `pg_data`、`milvus_data`、`minio_data`、`rabbitmq_data`、`jaeger_data` 下；模型通过 `models` 链接复用。`.dockerignore` 已排除这些数据目录和 `.env`，数据库启动后仍可正常构建应用镜像。

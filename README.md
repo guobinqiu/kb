@@ -103,7 +103,7 @@ UI 仅绑定 `127.0.0.1`，用于本地管理，不经 Nginx 暴露。远程查�
 
 脚本查询使用 `GET /api/v3/services` 和 `GET /api/v3/traces/{traceId}`；2.21 的旧 `/api/services` 路径返回 404。
 
-按[官方 Badger 配置](https://github.com/jaegertracing/jaeger/blob/v2.21.0/cmd/jaeger/config-badger.yaml)启用本地持久化，数据位于 `jaeger_data/`，保留 72 小时；重建容器不清空数据。已有 Indexer、Chat 等历史追踪继续保留至 72 小时 TTL 到期，收窄追踪范围不会清空历史数据。[Badger 适用于单节点](https://www.jaegertracing.io/docs/2.21/storage/badger/)，不支持横向扩展。`jaeger-init` 首次准备目录权限后退出，Jaeger 以 UID/GID 10001 运行。
+按[官方 Badger 配置](https://github.com/jaegertracing/jaeger/blob/v2.21.0/cmd/jaeger/config-badger.yaml)启用本地持久化，数据位于 `jaeger_data/`，保留 72 小时；重建容器不清空数据。已有 Indexer、Chat 等历史追踪继续保留至 72 小时 TTL 到期，收窄追踪范围不会清空历史数据。[Badger 适用于单节点](https://www.jaegertracing.io/docs/2.21/storage/badger/)，不支持横向扩展。Jaeger 以 UID/GID 10001 运行。
 
 `deploy/env.example` 提供 OTel 设置，`deploy/kb.yaml` 仅对 KB API 设置服务名和 OTel 默认值：SDK 默认启用，`parentbased_traceidratio` 对新根追踪默认采样率为 `1.0`，子追踪沿用父级采样决定。可在 `deploy/.env` 设置 `OTEL_TRACES_SAMPLER_ARG=0.1` 降低采样，或 `OTEL_SDK_DISABLED=true` 关闭 SDK；修改后用 `just kb up` 重建/重新创建 KB API 容器使环境生效。
 
