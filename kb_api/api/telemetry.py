@@ -22,7 +22,7 @@ _SAFE_ATTRIBUTES = {
     "server.address", "server.port", "net.peer.name", "net.peer.port",
     "network.protocol.version", "error.type",
     "app_id", "workspace_id", "file_id", "service", "backend",
-    "model", "mode", "top_k", "limit", "rerank", "rerank_fetch_k", "rrf_k",
+    "model", "mode", "top_k", "fetch_k", "limit", "rerank", "rrf_k",
     "input_count", "result_count", "vector_count", "dense_count", "sparse_count",
 }
 

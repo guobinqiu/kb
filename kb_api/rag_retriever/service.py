@@ -38,15 +38,18 @@ class Retriever:
     def search(self, request: SearchRequest) -> dict:
         validate_app_id(request.app_id)
         rerank = self.search_config.rerank if request.rerank is None else request.rerank
+        top_k = request.top_k or self.search_config.top_k
+        fetch_k = request.fetch_k if request.fetch_k is not None else max(self.search_config.fetch_k, top_k)
+        if fetch_k < top_k:
+            raise RetrieverRequestError(status_code=400, detail="fetch_k must be >= top_k")
         plan = SearchPlan(
             request.query,
             app_id=request.app_id,
             mode=request.mode or self.search_config.mode,
-            top_k=request.top_k or self.search_config.top_k,
-            rerank_fetch_k=request.rerank_fetch_k or self.search_config.rerank_fetch_k,
+            top_k=top_k,
+            fetch_k=fetch_k,
             rerank=rerank,
             rrf_k=request.rrf_k or self.search_config.rrf_k,
-            hybrid_fetch_k=self.search_config.hybrid_fetch_k,
             file_ids=request.file_ids,
             workspace_ids=request.workspace_ids,
         )
@@ -76,7 +79,7 @@ def _response(plan: SearchPlan, results: list[dict], elapsed_ms: float) -> dict:
         "results": results,
         "mode": plan.mode,
         "rerank": plan.rerank,
-        "rerank_fetch_k": plan.rerank_fetch_k if plan.rerank else None,
+        "fetch_k": plan.fetch_k,
         "elapsed_ms": elapsed_ms,
     }
 
@@ -84,16 +87,16 @@ def _response(plan: SearchPlan, results: list[dict], elapsed_ms: float) -> dict:
 def _replace_mode(plan: SearchPlan, mode: str) -> SearchPlan:
     return SearchPlan(
         plan.query, app_id=plan.app_id, mode=mode, top_k=plan.top_k,
-        rerank_fetch_k=plan.rerank_fetch_k, rerank=plan.rerank,
-        rrf_k=plan.rrf_k, hybrid_fetch_k=plan.hybrid_fetch_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
+        fetch_k=plan.fetch_k, rerank=plan.rerank,
+        rrf_k=plan.rrf_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
     )
 
 
 def _disable_rerank(plan: SearchPlan) -> SearchPlan:
     return SearchPlan(
         plan.query, app_id=plan.app_id, mode=plan.mode, top_k=plan.top_k,
-        rerank_fetch_k=plan.rerank_fetch_k, rerank=False,
-        rrf_k=plan.rrf_k, hybrid_fetch_k=plan.hybrid_fetch_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
+        fetch_k=plan.fetch_k, rerank=False,
+        rrf_k=plan.rrf_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
     )
 
 

@@ -5,13 +5,12 @@ indexer:
     timeout: 10 # 单位秒
 
 search:
-  mode: hybrid
+  mode: hybrid # dense: 仅语义检索；sparse: 仅 BM25；hybrid: 两路检索后用 RRF 融合
   top_k: 5
-  rerank_fetch_k: 20
+  fetch_k: 20
   rerank: true
   hybrid:
     rrf_k: 60
-    fetch_k: 20
 
 storage:
   endpoint_url: http://minio:9000

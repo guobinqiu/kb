@@ -57,5 +57,5 @@ class SearchResponse(BaseModel):
     results: list[Document] = Field(default_factory=list)
     mode: str | None = None
     rerank: bool | None = None
-    rerank_fetch_k: int | None = None
+    fetch_k: int | None = None
     elapsed_ms: float | None = None

@@ -76,8 +76,8 @@
     "score": "分数",
     "elapsed": "耗时",
     "rerank": "重排",
-    "rerankFetchK": "重排候选",
-    "rerankFetchKTitle": "开启重排时先召回的候选数量，必须不小于返回条数",
+    "fetchK": "召回候选",
+    "fetchKTitle": "每路检索召回的候选数量，必须不小于返回条数",
     "noResults": "未找到匹配结果",
     "noResultsHint": "试试换一个查询词，或缩小文件范围后重试",
     "modeValues": {

@@ -56,7 +56,7 @@ def test_legacy_workspace_search_path_is_not_exposed(system):
 
 
 def test_search_config_reports_active_retriever_capabilities(system):
-    system["retriever"].search_config = SimpleNamespace(mode="hybrid", top_k=5, rerank=True, rerank_fetch_k=20)
+    system["retriever"].search_config = SimpleNamespace(mode="hybrid", top_k=5, rerank=True, fetch_k=20)
     system["retriever"].vector = SimpleNamespace(supports_sparse_vector=lambda: True)
     system["retriever"].inference = SimpleNamespace(rerank=object())
 
@@ -67,7 +67,7 @@ def test_search_config_reports_active_retriever_capabilities(system):
         "mode": "hybrid",
         "top_k": 5,
         "rerank": True,
-        "rerank_fetch_k": 20,
+        "fetch_k": 20,
         "capabilities": {"sparse_vector": True},
     }
 

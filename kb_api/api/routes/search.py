@@ -67,6 +67,6 @@ def search_config(request: Request):
         "mode": config.mode,
         "top_k": config.top_k,
         "rerank": config.rerank and retriever.inference.rerank is not None,
-        "rerank_fetch_k": config.rerank_fetch_k,
+        "fetch_k": config.fetch_k,
         "capabilities": {"sparse_vector": retriever.vector.supports_sparse_vector()},
     }

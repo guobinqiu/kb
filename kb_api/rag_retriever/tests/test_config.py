@@ -13,11 +13,11 @@ from kb_api.rag_retriever.common.config import (
 pytestmark = pytest.mark.unit
 
 
-def test_search_config_reads_hybrid_fetch_k(tmp_path):
+def test_search_config_reads_fetch_k(tmp_path):
     config_path = tmp_path / "rag.yaml"
-    config_path.write_text(yaml.safe_dump({"search": {"hybrid": {"fetch_k": 24}}}), encoding="utf-8")
+    config_path.write_text(yaml.safe_dump({"search": {"fetch_k": 24}}), encoding="utf-8")
 
-    assert load_search_config(config_path).hybrid_fetch_k == 24
+    assert load_search_config(config_path).fetch_k == 24
 
 
 @pytest.mark.parametrize("backend,provider,secret_env,secret_field", [

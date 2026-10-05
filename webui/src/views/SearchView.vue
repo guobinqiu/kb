@@ -29,9 +29,9 @@
       </div>
       <div class="search-row-3">
         <el-checkbox v-if="rerankVisible" v-model="rerank" class="rerank-control">{{ t('search.rerank') }}</el-checkbox>
-        <div v-if="rerankVisible && rerank" class="fetchk-control">
-          <span class="cand-label" :title="t('search.rerankFetchKTitle')">{{ t('search.rerankFetchK') }}</span>
-          <el-input-number v-model="rerankFetchK" :min="topK" :max="100" :title="t('search.rerankFetchKTitle')" style="width: 120px" />
+        <div class="fetchk-control">
+          <span class="cand-label" :title="t('search.fetchKTitle')">{{ t('search.fetchK') }}</span>
+          <el-input-number v-model="fetchK" :min="topK" :max="100" :title="t('search.fetchKTitle')" style="width: 120px" />
         </div>
       </div>
       <div class="search-row-2">
@@ -92,7 +92,7 @@ const mode = ref('dense')
 const topK = ref(5)
 const rerank = ref(false)
 const rerankVisible = ref(false)
-const rerankFetchK = ref(20)
+const fetchK = ref(20)
 const sparseAvailable = ref(false)
 const fileIdsText = ref('')
 const workspaceIds = ref([])
@@ -117,7 +117,7 @@ async function doSearch() {
   if (!workspaceIds.value.length) return
   if (searching.value) return
   const currentRequest = ++searchRequestId
-  if (rerankVisible.value && rerank.value && rerankFetchK.value < topK.value) rerankFetchK.value = topK.value
+  if (fetchK.value < topK.value) fetchK.value = topK.value
   searching.value = true
   noResults.value = false
   workspaceGroups.value = []
@@ -132,10 +132,10 @@ async function doSearch() {
       workspace_ids: [...workspaceIds.value],
       mode: mode.value,
       top_k: topK.value,
+      fetch_k: fetchK.value,
       rerank: rerankVisible.value && rerank.value,
     }
     if (fileIds.length) body.file_ids = fileIds
-    if (rerankVisible.value && rerank.value) body.rerank_fetch_k = rerankFetchK.value
     const workspaces = appsStore.workspacesByApp[app.id] || []
     const res = await axios.post(`${API}/rag/search`, body, { headers: { 'X-App-Id': app.app_id } })
     if (currentRequest !== searchRequestId) return
@@ -153,7 +153,7 @@ async function doSearch() {
       mode: mode.value,
       topK: topK.value,
       rerank: rerankVisible.value && rerank.value,
-      rerankFetchK: rerankVisible.value && rerank.value ? rerankFetchK.value : null,
+      fetchK: fetchK.value,
       fileIds,
       workspaceNames: body.workspace_ids.map(id => workspaceNames.get(id) || id),
     }
@@ -172,7 +172,7 @@ async function fetchConfig() {
     topK.value = res.data.top_k ?? topK.value
     rerankVisible.value = Boolean(res.data.rerank)
     rerank.value = Boolean(res.data.rerank)
-    rerankFetchK.value = res.data.rerank_fetch_k ?? rerankFetchK.value
+    fetchK.value = res.data.fetch_k ?? fetchK.value
   } catch (err) { showToast('error', errorMessage(err)) }
 }
 

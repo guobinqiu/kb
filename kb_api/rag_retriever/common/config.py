@@ -38,10 +38,9 @@ class VectorConfig:
 class SearchConfig:
     mode: str = "dense"
     top_k: int = 5
-    rerank_fetch_k: int = 20
+    fetch_k: int = 20
     rerank: bool = False
     rrf_k: int = 60
-    hybrid_fetch_k: int = 20
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -138,8 +137,7 @@ def load_search_config(path: str | Path | None = None) -> SearchConfig:
     return SearchConfig(
         mode=str(raw.get("mode", "dense")),
         top_k=int(raw.get("top_k", 5)),
-        rerank_fetch_k=int(raw.get("rerank_fetch_k", 20)),
+        fetch_k=int(raw.get("fetch_k", 20)),
         rerank=bool(raw.get("rerank", False)),
         rrf_k=int(hybrid.get("rrf_k", raw.get("rrf_k", 60))),
-        hybrid_fetch_k=int(hybrid.get("fetch_k", 20)),
     )

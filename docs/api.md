@@ -160,7 +160,7 @@ Content-Type: application/json
 | `mode` | string | 否 | `kb_api/config/rag.yaml` 的 `search.mode` | `dense`、`sparse` 或 `hybrid`；`hybrid` 在 sparse 不可用时自动降级为 `dense` |
 | `top_k` | int | 否 | `kb_api/config/rag.yaml` 的 `search.top_k` | 最多返回条数，范围 `1..50` |
 | `rerank` | bool | 否 | `kb_api/config/rag.yaml` 的 `search.rerank` | 是否启用 rerank |
-| `rerank_fetch_k` | int | 否 | `kb_api/config/rag.yaml` 的 `search.rerank_fetch_k` | rerank 前召回数量，范围 `1..100`，传 `top_k` 时必须大于等于 `top_k` |
+| `fetch_k` | int | 否 | `kb_api/config/rag.yaml` 的 `search.fetch_k` | 每路检索召回数量，范围 `1..100`，必须大于等于 `top_k` |
 | `rrf_k` | int | 否 | `kb_api/config/rag.yaml` 的 `search.hybrid.rrf_k` | hybrid 模式下 RRF 融合参数，范围 `1..1000` |
 | `file_ids` | string[] | 否 | - | 在选定工作区内限定文件；不传表示不限文件；空数组会被拒绝；最多 1000 个 |
 | `workspace_ids` | string[] | 否 | 当前用户在该 App 有权访问的全部工作区 | 限定一个或多个知识库；空数组会被拒绝；最多 1000 个；越权返回 403 |
@@ -173,7 +173,7 @@ Content-Type: application/json
   "mode": "hybrid",
   "top_k": 5,
   "rerank": false,
-  "rerank_fetch_k": 20,
+  "fetch_k": 20,
   "rrf_k": 60,
   "workspace_ids": ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"],
   "file_ids": ["550e8400-e29b-41d4-a716-446655440000"]
@@ -187,7 +187,7 @@ Content-Type: application/json
 | `results` | 搜索结果列表 |
 | `mode` | 本次搜索模式 |
 | `rerank` | 本次是否启用 rerank |
-| `rerank_fetch_k` | rerank 启用时的召回数量；未启用时为 `null` |
+| `fetch_k` | 每路检索召回数量 |
 | `elapsed_ms` | 后端搜索耗时，单位毫秒 |
 
 `results` 元素字段：
@@ -221,7 +221,7 @@ Content-Type: application/json
   ],
   "mode": "dense",
   "rerank": false,
-  "rerank_fetch_k": null,
+  "fetch_k": 20,
   "elapsed_ms": 271.7
 }
 ```

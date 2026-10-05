@@ -13,16 +13,16 @@ from kb_api.rag_retriever.schemas import SearchRequest
 pytestmark = pytest.mark.unit
 
 
-def test_dense_search_uses_top_k_without_rerank_fetch_limit():
+def test_dense_search_uses_fetch_k_without_rerank():
     request = SearchRequest(
         query="query",
         app_id="imsdom",
         workspace_ids=["workspace-a"],
         top_k=50,
         rerank=False,
-        rerank_fetch_k=20,
+        fetch_k=50,
     )
-    plan = SearchPlan(request.query, top_k=request.top_k, rerank=False, rerank_fetch_k=request.rerank_fetch_k)
+    plan = SearchPlan(request.query, top_k=request.top_k, rerank=False, fetch_k=request.fetch_k)
     vector = FakeVector()
 
     results = _SearchExecutor(plan, vector=vector).execute()
@@ -116,7 +116,7 @@ def test_executor_searches_single_chunks_collection_with_file_filter():
 
     assert [item["id"] for item in results] == ["dense-1"]
     assert ("build_metadata_filter", ("file_a",), ()) in vector.calls
-    assert ("search_dense", "query", 5, ("metadata-filter", ("file_a",), ())) in vector.calls
+    assert ("search_dense", "query", 20, ("metadata-filter", ("file_a",), ())) in vector.calls
 
 
 def test_executor_exposes_retrieval_score():
@@ -173,7 +173,7 @@ def test_dense_search_splits_query_embedding_and_vector_query():
     assert vector.calls == [
         ("build_metadata_filter", (), ()),
         ("encode_dense_query", "query"),
-        ("query_dense_vector", [0.1, 0.2, 0.3], 2, ("metadata-filter", (), ())),
+        ("query_dense_vector", [0.1, 0.2, 0.3], 20, ("metadata-filter", (), ())),
     ]
 
 
@@ -185,7 +185,7 @@ def test_executor_uses_sparse_search_mode():
     )
 
     assert [item["id"] for item in executor.execute()] == ["sparse-1"]
-    assert ("search_sparse", "query", 2, ("metadata-filter", (), ())) in vector.calls
+    assert ("search_sparse", "query", 20, ("metadata-filter", (), ())) in vector.calls
 
 
 def test_executor_hybrid_merges_dense_and_sparse_results():
@@ -234,6 +234,33 @@ def test_executor_hybrid_fetches_more_candidates_than_final_top_k():
     ).execute()
 
     assert "dense-4" in [item["id"] for item in results]
+    assert ("dense_limit", 20) in vector.calls
+    assert ("sparse_limit", 20) in vector.calls
+
+
+def test_executor_hybrid_without_rerank_fuses_directly_to_top_k():
+    class Vector(FakeSparseVector):
+        def query_dense_vector(self, query_vector, limit, metadata_filter):
+            self.calls.append(("dense_limit", limit))
+            return [
+                {"id": f"dense-{rank}", "content": f"dense-{rank}", "metadata": {}, "_score": 1 / rank}
+                for rank in range(1, limit + 1)
+            ]
+
+        def search_sparse(self, query, limit, metadata_filter):
+            self.calls.append(("sparse_limit", limit))
+            return [
+                {"id": f"sparse-{rank}", "content": f"sparse-{rank}", "metadata": {}, "_score": 1 / rank}
+                for rank in range(1, limit + 1)
+            ]
+
+    vector = Vector()
+    executor = search_mod._SearchExecutor(
+        search_mod.SearchPlan("query", top_k=5, mode="hybrid", rerank=False),
+        vector=vector,
+    )
+
+    assert len(executor._retrieve_items(executor._prepare_plan())) == 5
     assert ("dense_limit", 20) in vector.calls
     assert ("sparse_limit", 20) in vector.calls
 
@@ -309,7 +336,7 @@ def test_executor_reranks_dense_candidates_when_rerank_client_is_configured():
     vector = Vector()
     rerank = FakeRerank()
     results = search_mod._SearchExecutor(
-        search_mod.SearchPlan("query", top_k=2, rerank_fetch_k=3, rerank=True),
+        search_mod.SearchPlan("query", top_k=2, fetch_k=3, rerank=True),
         vector=vector,
         rerank=rerank,
     ).execute()
@@ -354,7 +381,7 @@ def test_executor_returns_retrieved_items_when_rerank_fails(caplog):
             )
 
     executor = search_mod._SearchExecutor(
-        search_mod.SearchPlan("query", top_k=2, rerank_fetch_k=3, rerank=True),
+        search_mod.SearchPlan("query", top_k=2, fetch_k=3, rerank=True),
         vector=Vector(),
         rerank=FailingRerank(),
     )

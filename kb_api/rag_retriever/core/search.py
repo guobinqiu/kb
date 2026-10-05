@@ -42,18 +42,17 @@ class SearchPlan:
     app_id: str | None = None
     mode: str = "dense"
     top_k: int = 5
-    rerank_fetch_k: int | None = None
+    fetch_k: int = 20
     rerank: bool = False
     rrf_k: int = 60
-    hybrid_fetch_k: int = 20
     file_ids: list[str] | None = None
     workspace_ids: list[str] | None = None
 
     def __post_init__(self):
         if self.mode not in {"dense", "sparse", "hybrid"}:
             raise ValueError("mode must be dense, sparse, or hybrid")
-        if self.rerank and self.rerank_fetch_k is not None and self.rerank_fetch_k < self.top_k:
-            raise ValueError("rerank_fetch_k must be >= top_k")
+        if self.fetch_k < self.top_k:
+            raise ValueError("fetch_k must be >= top_k")
         if self.file_ids is not None:
             if len(self.file_ids) == 0:
                 raise ValueError("file_ids cannot be empty")
@@ -98,11 +97,8 @@ class _SearchExecutor:
             self.elapsed_ms = round((time.perf_counter() - started_at) * 1000, 1)
 
     def _prepare_plan(self):
-        retrieve_limit = self.plan.rerank_fetch_k if self.plan.rerank and self.plan.rerank_fetch_k is not None else self.plan.top_k
-        if self.plan.mode == "hybrid":
-            retrieve_limit = max(retrieve_limit, self.plan.hybrid_fetch_k)
         return {
-            "retrieve_limit": retrieve_limit,
+            "retrieve_limit": self.plan.fetch_k,
             "metadata_filter": self.vector_client.build_metadata_filter(self.plan.file_ids, self.plan.workspace_ids),
         }
 
@@ -116,6 +112,7 @@ class _SearchExecutor:
                 self.plan.query,
                 context["retrieve_limit"],
                 self.plan.rrf_k,
+                context["retrieve_limit"] if self.plan.rerank else self.plan.top_k,
             )
         else:
             items = _retrieve_dense(self.vector_client, context["metadata_filter"], self.plan.query, context["retrieve_limit"])
@@ -173,6 +170,7 @@ def _retrieve_hybrid(
     query: str,
     limit: int,
     rrf_k: int,
+    result_limit: int,
 ) -> list[dict]:
     with ThreadPoolExecutor(max_workers=2) as executor:
         dense_future = executor.submit(copy_context().run, _retrieve_dense, vector, metadata_filter, query, limit)
@@ -181,9 +179,9 @@ def _retrieve_hybrid(
         try:
             sparse_items = sparse_future.result()
         except UpstreamServiceError:
-            return dense_items[:limit]
+            return dense_items[:result_limit]
     with _search_span("rag.search.fusion", {"dense_count": len(dense_items), "sparse_count": len(sparse_items), "rrf_k": rrf_k}) as span:
-        results = _merge_rrf(dense_items, sparse_items, rrf_k)[:limit]
+        results = _merge_rrf(dense_items, sparse_items, rrf_k)[:result_limit]
         span.set_attribute("result_count", len(results))
         return results
 

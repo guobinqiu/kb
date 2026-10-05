@@ -223,7 +223,7 @@ POST /api/v1/rag/search
 | mode           | string   | 否   | `dense`、`sparse`、`hybrid`；不传使用配置默认值               |
 | top_k          | integer  | 否   | 返回数量，范围 1 到 50                                        |
 | rerank         | boolean  | 否   | 是否启用重排；不传使用配置默认值                              |
-| rerank_fetch_k | integer  | 否   | 重排前召回数量，范围 1 到 100；启用重排时必须大于等于 `top_k` |
+| fetch_k        | integer  | 否   | 每路检索召回数量，范围 1 到 100；必须大于等于 `top_k` |
 | rrf_k          | integer  | 否   | Hybrid RRF 参数，范围 1 到 1000                               |
 | workspace_ids  | string[] | 否   | 限定检索工作区；不传时检索当前身份有权访问的全部工作区，最多 1000 个 |
 | file_ids       | string[] | 否   | 限定检索文件，最多 1000 个                                    |
@@ -235,7 +235,7 @@ POST /api/v1/rag/search
 | results        | array           | 检索结果列表                                              |
 | mode           | string          | 实际检索模式；`hybrid` 在 sparse 不可用时会降级为 `dense` |
 | rerank         | boolean         | 本次是否启用重排                                          |
-| rerank_fetch_k | integer 或 null | 重排前召回数量；未启用重排时为 `null`                     |
+| fetch_k        | integer         | 每路检索召回数量                                         |
 | elapsed_ms     | number          | 检索耗时，单位毫秒                                        |
 
 `results[]` 字段：
@@ -271,7 +271,7 @@ curl -X POST http://localhost:5175/api/v1/rag/search \
     "mode": "hybrid",
     "top_k": 3,
     "rerank": true,
-    "rerank_fetch_k": 20
+    "fetch_k": 20
   }'
 ```
 
@@ -288,7 +288,7 @@ curl -X POST http://localhost:5175/api/v1/rag/search \
   ],
   "mode": "hybrid",
   "rerank": true,
-  "rerank_fetch_k": 20,
+  "fetch_k": 20,
   "elapsed_ms": 1134.2
 }
 ```

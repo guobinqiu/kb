@@ -165,7 +165,7 @@ def test_response_accepts_result_without_score():
         ],
         "mode": "dense",
         "rerank": True,
-        "rerank_fetch_k": 20,
+        "fetch_k": 20,
         "elapsed_ms": 42.0,
     }
     resp = Response(**raw)
@@ -206,7 +206,7 @@ def test_documents_iteration_and_count():
         ],
         "mode": "dense",
         "rerank": False,
-        "rerank_fetch_k": 10,
+        "fetch_k": 10,
         "elapsed_ms": 1.0,
     }
     resp = Response(**raw)

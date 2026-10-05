@@ -76,8 +76,8 @@
     "score": "Score",
     "elapsed": "Elapsed",
     "rerank": "Rerank",
-    "rerankFetchK": "Rerank candidates",
-    "rerankFetchKTitle": "Candidate count retrieved before rerank; must be at least Top K",
+    "fetchK": "Recall candidates",
+    "fetchKTitle": "Candidates retrieved per search path; must be at least Top K",
     "noResults": "No matching results",
     "noResultsHint": "Try another query, or narrow the file scope and search again",
     "modeValues": {
