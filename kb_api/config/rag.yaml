@@ -119,7 +119,7 @@ inference:
 
 vector_db:
   qdrant:
-    enable: false
+    enable: true
     bm25: true
     base_url: http://qdrant:6333
     query_timeout: 10
@@ -136,7 +136,7 @@ vector_db:
       always_ram: true
 
   milvus:
-    enable: true
+    enable: false
     bm25: true
     base_url: http://milvus:19530
     query_timeout: 10

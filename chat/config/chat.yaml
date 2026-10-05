@@ -1,6 +1,6 @@
-model_name: vllm
-openai_base_url: http://100.125.150.108:8000/v1
-llm_kwargs: ""
+model_name: deepseek/deepseek-v4-flash-0731
+openai_base_url: https://openrouter.ai/api/v1
+llm_kwargs: '{"reasoning_effort":"high"}'
 use_responses_api: false
 prompt: |
   你是一个智能助手，请用自然、准确的中文回答。
@@ -10,7 +10,7 @@ database_url: postgresql://rag:rag@postgres:5432/rag
 
 llm_concurrency_limit: 10
 request:
-  timeout: 10
+  timeout: 30
 model:
   timeout: 10
 
@@ -24,3 +24,6 @@ rag:
   base_url: http://kb_api:6100
   timeout: 10
   max_retries: 2
+  top_k: 5
+  rerank: false
+  query_rewrite: true

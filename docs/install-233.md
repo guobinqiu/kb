@@ -2,7 +2,7 @@
 
 部署主机：`imsdom@19.16.1.233`。项目目录：`/home/imsdom/workspace/kb`。
 
-本指南使用 Docker Compose、本机构建应用镜像，默认向量库为 Qdrant。MinerU、TEI 和 vLLM 复用 233 上已经运行的服务。
+本指南使用 Docker Compose、本机构建应用镜像，默认向量库为 Qdrant。MinerU 和 TEI 复用 233 上已经运行的服务；Chat 当前使用 OpenRouter。
 
 ## 1. 检查环境
 
@@ -31,7 +31,6 @@ npm --version
 curl -fsS http://127.0.0.1:18002/v1/health
 curl -fsS http://127.0.0.1:8081/health
 curl -fsS http://127.0.0.1:8082/health
-curl -fsS http://127.0.0.1:8000/v1/models
 ```
 
 | 服务 | 地址 | 要求 |
@@ -39,11 +38,10 @@ curl -fsS http://127.0.0.1:8000/v1/models
 | MinerU API Server | `http://19.16.1.233:18002` | 健康接口返回 `status: ok`；本次版本为 4.0.6 |
 | TEI Embedding | `http://19.16.1.233:8081` | 健康接口 HTTP 200；模型 `BAAI/bge-m3` |
 | TEI Rerank | `http://19.16.1.233:8082` | 健康接口 HTTP 200；模型 `BAAI/bge-reranker-v2-m3` |
-| vLLM | `http://19.16.1.233:8000/v1` | 模型列表中存在 `id: vllm` |
 
 TEI 健康接口可能没有响应正文，以 HTTP 状态为准。MinerU API Server 已连接现有 VLM Server，KB 不再启动额外的 VLM 引擎。
 
-尚未安装 MinerU 或 TEI 时，先分别按照 [MinerU 部署步骤](../scripts/deploy_mineru_services.txt) 和 [TEI 部署步骤](../scripts/deploy_tei_services.txt) 准备服务。它们需要 NVIDIA GPU 与 Docker GPU 支持。上述四个地址可用后，再继续安装 KB。
+尚未安装 MinerU 或 TEI 时，先分别按照 [MinerU 部署步骤](../scripts/deploy_mineru_services.txt) 和 [TEI 部署步骤](../scripts/deploy_tei_services.txt) 准备服务。它们需要 NVIDIA GPU 与 Docker GPU 支持。上述三个地址可用后，再继续安装 KB。
 
 ## 2. 获取项目
 
@@ -115,7 +113,7 @@ nano deploy/.env
 | `KB_MINIO_SECURE` | `false` |
 | `S3_ACCESS_KEY`、`KB_MINIO_ACCESS_KEY` | 两项填相同的 MinIO 用户名 |
 | `S3_SECRET_KEY`、`KB_MINIO_SECRET_KEY` | 两项填相同的 MinIO 密码，至少 8 个字符 |
-| `OPENAI_API_KEY` | vLLM 未启用认证时可填 `local-vllm`；启用认证时填写实际 Key |
+| `OPENAI_API_KEY` | 填写 OpenRouter API Key，与 `chat/config/chat.yaml` 的 `openai_base_url` 对应 |
 
 其他 OTel 设置保持 `env.example` 中的默认值。当前未启用云解析、云推理和云向量库，对应 API Key 可以留空。`.env` 不提交 Git。
 
@@ -151,12 +149,23 @@ KB API 和 Indexer 共用这个文件。PDF 使用配置的 `standard`，Office 
 编辑 `chat/config/chat.yaml`，核对：
 
 ```yaml
-model_name: vllm
-openai_base_url: http://19.16.1.233:8000/v1
+model_name: deepseek/deepseek-v4-flash-0731
+openai_base_url: https://openrouter.ai/api/v1
+llm_kwargs: '{"reasoning_effort":"high"}'
 database_url: postgresql://rag:rag@postgres:5432/rag
+request:
+  timeout: 30
+model:
+  timeout: 10
+rag:
+  base_url: http://kb_api:6100
+  timeout: 10
+  top_k: 5
+  rerank: false
+  query_rewrite: true
 ```
 
-保留该文件其余配置，`rag.base_url` 为 `http://kb_api:6100`。
+保留该文件其余配置。
 
 ## 6. 检查容器和端口
 
@@ -164,7 +173,7 @@ database_url: postgresql://rag:rag@postgres:5432/rag
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-新项目使用容器名 `postgres`、`etcd`、`milvus`、`minio`、`rabbitmq`、`jaeger`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`nginx`。同名旧容器需先处理。
+新项目默认使用容器名 `postgres`、`qdrant`、`minio`、`rabbitmq`、`jaeger`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`nginx`。同名旧容器需先处理。可选的 Milvus 使用 `etcd` 和 `milvus`。
 
 本次 233 有一个已停止的旧 `minio` 容器，实际处理命令为：
 
@@ -174,19 +183,18 @@ docker rename minio minio-legacy-stopped
 
 仅在存在该旧容器时执行。此命令保留旧容器和数据，不应对正在使用的 KB MinIO 执行。
 
-基础服务需要端口 `2379`、`5432`、`5672`、`15672`、`9000`、`9001`、`19530`、`9091`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。已有 GPU 服务使用 `8000`、`8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
+基础服务需要端口 `5432`、`5672`、`15672`、`6333`、`6334`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
 
 ## 7. 启动基础服务
 
 ```bash
 cd ~/workspace/kb
 sudo install -d -o 10001 -g 10001 jaeger_data jaeger_data/keys jaeger_data/values
-sudo install -d -o 999 -g 999 milvus_data/standalone/milvus milvus_data/standalone/milvus/data
 just infra up
 docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml ps -a
 ```
 
-默认启动 PostgreSQL、etcd、Milvus、MinIO、RabbitMQ、Collector 和 Jaeger。
+默认启动 PostgreSQL、Qdrant、MinIO、RabbitMQ、Collector 和 Jaeger。
 
 如果 RabbitMQ 拉取中断或长时间没有进展，本次 233 已验证以下方式可用：
 
@@ -300,4 +308,4 @@ just webui up
 
 仅前端依赖发生变化时，在 `just webui up` 前重新执行 `npm --prefix webui ci`。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just infra up`。
 
-项目数据分别保存在 `pg_data`、`milvus_data`、`minio_data`、`rabbitmq_data`、`jaeger_data` 下；模型通过 `models` 链接复用。`.dockerignore` 已排除这些数据目录和 `.env`，数据库启动后仍可正常构建应用镜像。
+项目数据分别保存在 `pg_data`、`qdrant_data`、`minio_data`、`rabbitmq_data`、`jaeger_data` 下；模型通过 `models` 链接复用。`.dockerignore` 已排除这些数据目录和 `.env`，数据库启动后仍可正常构建应用镜像。
