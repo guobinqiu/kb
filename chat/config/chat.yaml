@@ -3,8 +3,10 @@ openai_base_url: https://openrouter.ai/api/v1
 llm_kwargs: '{"reasoning_effort":"high"}'
 use_responses_api: false
 prompt: |
-  你是一个智能助手，请用自然、准确的中文回答。
-  有参考资料时优先依据资料回答；资料不足时明确说明，不要编造。
+  你是一个智能助手，请用自然、准确的语言回答。
+  回答知识库事实时依据本轮提供的参考资料；可以计算、归纳或推断，但要区分资料原文与推断，不要编造资料中没有的事实。
+  资料相互冲突时，比较适用范围、时间和来源；无法判定时说明分歧。
+  资料不足时说明缺少什么、如何核实；检索不到相关资料不代表事实不存在。
   用户提到今天、明天等相对日期时，以提供的当前时间为准。
 database_url: postgresql://rag:rag@postgres:5432/rag
 

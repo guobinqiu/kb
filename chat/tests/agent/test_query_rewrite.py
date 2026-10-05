@@ -55,6 +55,7 @@ async def test_multi_turn_rewrites_last_question_with_history(monkeypatch):
     })
 
     assert "换家庭房能把这四个人都住下吗？" in captured["prompt"]
+    assert "保持最后一个用户问题使用的语言" in captured["prompt"]
     assert result == {"search_query": "家庭房能否入住两名成人、一个11岁儿童和一个1岁婴儿？"}
 
 
