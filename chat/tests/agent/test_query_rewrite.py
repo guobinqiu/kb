@@ -11,6 +11,20 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio
+async def test_multi_turn_uses_original_question_when_rewrite_disabled(monkeypatch):
+    monkeypatch.setattr(rewrite_mod.settings, "rag_query_rewrite", False)
+    monkeypatch.setattr(rewrite_mod, "get_llm", lambda: pytest.fail("rewrite is disabled"))
+
+    result = await query_rewrite_node({"messages": [
+        HumanMessage(content="我们两大一小。"),
+        AIMessage(content="好的。"),
+        HumanMessage(content="家庭房呢？"),
+    ]})
+
+    assert result == {"search_query": "家庭房呢？"}
+
+
+@pytest.mark.asyncio
 async def test_single_turn_uses_original_question_without_calling_llm(monkeypatch):
     monkeypatch.setattr(rewrite_mod, "get_llm", lambda: pytest.fail("single turn must not call LLM"))
 
@@ -22,6 +36,7 @@ async def test_single_turn_uses_original_question_without_calling_llm(monkeypatc
 @pytest.mark.asyncio
 async def test_multi_turn_rewrites_last_question_with_history(monkeypatch):
     captured = {}
+    monkeypatch.setattr(rewrite_mod.settings, "rag_query_rewrite", True)
 
     class _LLM:
         async def ainvoke(self, messages):
@@ -45,6 +60,7 @@ async def test_multi_turn_rewrites_last_question_with_history(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rewrite_failure_falls_back_to_last_question(monkeypatch):
+    monkeypatch.setattr(rewrite_mod.settings, "rag_query_rewrite", True)
     class _LLM:
         async def ainvoke(self, messages):
             raise RuntimeError("model unavailable")

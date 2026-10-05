@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 import chat.src.api.auth as auth_mod
+import chat.src.agent.nodes.rag_prefetch as prefetch_mod
 from chat.src.agent.nodes.rag_prefetch import rag_prefetch_node
 from chat.src.api.auth import AppCredential
 from chat.src.rag.schemas import Document
@@ -59,6 +60,26 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
     assert captured["top_k"] == 5
     assert captured["rerank"] is False
     assert "测试内容" in result["rag_context"]
+
+
+@pytest.mark.asyncio
+async def test_rag_prefetch_uses_configured_search_options(monkeypatch):
+    captured = {}
+
+    class _Client:
+        async def search(self, req, **kwargs):
+            captured["top_k"] = req.top_k
+            captured["rerank"] = req.rerank
+            return type("Result", (), {"success": True, "documents": [], "elapsed_ms": 1.0})()
+
+    monkeypatch.setattr(prefetch_mod.settings, "rag_top_k", 7)
+    monkeypatch.setattr(prefetch_mod.settings, "rag_rerank", True)
+    monkeypatch.setattr("chat.src.rag.client.get_rag_client", lambda: _Client())
+    monkeypatch.setattr(auth_mod, "get_current_credential", lambda: AppCredential(app_id="imsdom", api_key=""))
+
+    await rag_prefetch_node({"messages": [HumanMessage(content="怎么退款？")], "workspace_ids": ["workspace-1"]})
+
+    assert captured == {"top_k": 7, "rerank": True}
 
 
 @pytest.mark.asyncio

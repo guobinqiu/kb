@@ -19,6 +19,9 @@ def _load_settings() -> dict:
     values["rag_base_url"] = rag.get("base_url")
     values["rag_timeout"] = rag.get("timeout", 10.0)
     values["rag_max_retries"] = rag.get("max_retries", 2)
+    values["rag_top_k"] = rag.get("top_k", 5)
+    values["rag_rerank"] = rag.get("rerank", False)
+    values["rag_query_rewrite"] = rag.get("query_rewrite", True)
     values["openai_api_key"] = os.getenv("OPENAI_API_KEY")
     values["database_url"] = os.getenv("DATABASE_URL") or values.get("database_url")
     return values
@@ -52,6 +55,9 @@ class Settings(BaseSettings):
     rag_base_url: str
     rag_timeout: float = 10.0
     rag_max_retries: int = 2
+    rag_top_k: int = 5
+    rag_rerank: bool = False
+    rag_query_rewrite: bool = True
 
     model_config = SettingsConfigDict(hide_input_in_errors=True)
 

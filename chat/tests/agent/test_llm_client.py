@@ -34,7 +34,10 @@ def test_create_llm_uses_yaml_behavior_and_environment_connections(monkeypatch, 
         "  timeout: 55\n"
         "rag:\n"
         "  base_url: http://rag.example:6000\n"
-        "  timeout: 12.5\n",
+        "  timeout: 12.5\n"
+        "  top_k: 7\n"
+        "  rerank: true\n"
+        "  query_rewrite: false\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(config_mod, "CONFIG_FILE", config_path, raising=False)
@@ -61,6 +64,9 @@ def test_create_llm_uses_yaml_behavior_and_environment_connections(monkeypatch, 
     assert settings.request_timeout == 45
     assert settings.model_timeout == 55
     assert settings.rag_timeout == 12.5
+    assert settings.rag_top_k == 7
+    assert settings.rag_rerank is True
+    assert settings.rag_query_rewrite is False
     assert settings.database_url == (database_env or "postgresql://rag:rag@postgres:5432/rag")
 
 

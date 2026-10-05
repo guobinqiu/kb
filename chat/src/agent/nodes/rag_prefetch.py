@@ -11,6 +11,7 @@ from typing import Any
 
 from chat.src.agent.stream import safe_get_writer
 from chat.src.api import auth
+from chat.src.config import settings
 from chat.src.rag import client as rag_client
 from chat.src.rag.schemas import SearchRequest
 
@@ -52,7 +53,7 @@ async def rag_prefetch_node(state: dict[str, Any]) -> dict[str, Any]:
 
     async def search_workspace(workspace_id: str):
         result = await client.search(
-            SearchRequest(query=query, workspace_ids=[workspace_id], top_k=5, rerank=False),
+            SearchRequest(query=query, workspace_ids=[workspace_id], top_k=settings.rag_top_k, rerank=settings.rag_rerank),
             authorization=auth.get_current_authorization(),
             app_id=credential.app_id,
         )

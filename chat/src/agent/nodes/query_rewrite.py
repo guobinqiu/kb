@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain_core.messages import HumanMessage
 
 from chat.src.agent.llm import get_llm
+from chat.src.config import settings
 
 
 _PROMPT = """根据以下对话，将最后一个用户问题改写成脱离上下文也能独立理解的检索问题。
@@ -24,7 +25,7 @@ async def query_rewrite_node(state: dict) -> dict[str, str]:
         return {"search_query": ""}
 
     current_question = _message_content(human_messages[-1]).strip()
-    if len(human_messages) == 1:
+    if not settings.rag_query_rewrite or len(human_messages) == 1:
         return {"search_query": current_question}
 
     conversation = []
