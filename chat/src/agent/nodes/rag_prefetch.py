@@ -52,7 +52,7 @@ async def rag_prefetch_node(state: dict[str, Any]) -> dict[str, Any]:
 
     async def search_workspace(workspace_id: str):
         result = await client.search(
-            SearchRequest(query=query, workspace_ids=[workspace_id], top_k=3),
+            SearchRequest(query=query, workspace_ids=[workspace_id], top_k=5, rerank=False),
             authorization=auth.get_current_authorization(),
             app_id=credential.app_id,
         )

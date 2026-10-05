@@ -68,12 +68,8 @@ class FakeTracedVector(FakeVector):
 
 
 class FakeSparseVector(FakeTracedVector):
-    def encode_sparse_query(self, query):
-        self.calls.append(("encode_sparse_query", query))
-        return {1: 0.5}
-
-    def query_sparse_vector(self, query_vector, limit, metadata_filter):
-        self.calls.append(("query_sparse_vector", query_vector, limit, metadata_filter))
+    def search_sparse(self, query, limit, metadata_filter):
+        self.calls.append(("search_sparse", query, limit, metadata_filter))
         return [{"id": "sparse-1", "content": "sparse", "metadata": {}, "_score": 0.7}]
 
 
@@ -189,7 +185,7 @@ def test_executor_uses_sparse_search_mode():
     )
 
     assert [item["id"] for item in executor.execute()] == ["sparse-1"]
-    assert ("query_sparse_vector", {1: 0.5}, 2, ("metadata-filter", (), ())) in vector.calls
+    assert ("search_sparse", "query", 2, ("metadata-filter", (), ())) in vector.calls
 
 
 def test_executor_hybrid_merges_dense_and_sparse_results():
@@ -198,8 +194,8 @@ def test_executor_hybrid_merges_dense_and_sparse_results():
             self.calls.append(("query_dense_vector", query_vector, limit, metadata_filter))
             return [{"id": "shared", "content": "dense", "metadata": {}, "_score": 0.8}]
 
-        def query_sparse_vector(self, query_vector, limit, metadata_filter):
-            self.calls.append(("query_sparse_vector", query_vector, limit, metadata_filter))
+        def search_sparse(self, query, limit, metadata_filter):
+            self.calls.append(("search_sparse", query, limit, metadata_filter))
             return [
                 {"id": "shared", "content": "dense", "metadata": {}, "_score": 0.4},
                 {"id": "sparse-only", "content": "sparse", "metadata": {}, "_score": 0.9},
@@ -223,7 +219,7 @@ def test_executor_hybrid_runs_dense_and_sparse_in_parallel():
             concurrent_queries.wait()
             return [{"id": "dense", "content": "dense", "metadata": {}, "_score": 0.8}]
 
-        def query_sparse_vector(self, query_vector, limit, metadata_filter):
+        def search_sparse(self, query, limit, metadata_filter):
             concurrent_queries.wait()
             return [{"id": "sparse", "content": "sparse", "metadata": {}, "_score": 0.7}]
 
@@ -240,7 +236,7 @@ def test_executor_hybrid_preserves_app_collection_scope_in_parallel_threads():
         def query_dense_vector(self, query_vector, limit, metadata_filter):
             return [{"id": "dense", "content": current_collection(), "metadata": {}, "_score": 0.8}]
 
-        def query_sparse_vector(self, query_vector, limit, metadata_filter):
+        def search_sparse(self, query, limit, metadata_filter):
             return [{"id": "sparse", "content": current_collection(), "metadata": {}, "_score": 0.7}]
 
     with app_collection("imsdom"):
@@ -257,7 +253,7 @@ def test_executor_hybrid_falls_back_to_dense_when_sparse_upstream_fails():
         def query_dense_vector(self, query_vector, limit, metadata_filter):
             return [{"id": "dense", "content": "dense", "metadata": {}, "_score": 0.8}]
 
-        def query_sparse_vector(self, query_vector, limit, metadata_filter):
+        def search_sparse(self, query, limit, metadata_filter):
             raise UpstreamServiceError(
                 service="inference",
                 error="inference returned HTTP 404",

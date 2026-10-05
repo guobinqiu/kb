@@ -9,7 +9,6 @@ from kb_api.rag_retriever.inference.providers.tei import TeiDenseClient, TeiRera
 class InferenceComponents:
     def __init__(self, dense, *, rerank=None, embedding: EmbeddingSpec | None = None):
         self.dense = dense
-        self.sparse = None
         self.rerank = rerank
         self.embedding = embedding
         self.ready = True

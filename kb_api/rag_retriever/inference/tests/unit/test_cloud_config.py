@@ -58,7 +58,6 @@ def test_siliconflow_rerank_enable_controls_loaded_client(tmp_path, monkeypatch,
     try:
         assert client.dense.model == "dense"
         assert (client.rerank is not None) is enabled
-        assert client.sparse is None
     finally:
         client.close()
 

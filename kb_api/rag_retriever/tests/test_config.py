@@ -60,6 +60,16 @@ def test_vector_config_timeouts_fall_back_to_general_timeout(tmp_path, timeout, 
     assert config.quantization is None
 
 
+@pytest.mark.parametrize("backend", ["qdrant", "milvus"])
+def test_vector_config_reads_bm25_switch(tmp_path, backend):
+    config_path = tmp_path / "rag.yaml"
+    config_path.write_text(yaml.safe_dump({"vector_db": {backend: {
+        "enable": True, "base_url": "http://vector.example.test", "bm25": False,
+    }}}), encoding="utf-8")
+
+    assert load_vector_config(config_path).bm25 is False
+
+
 def test_vector_config_reads_explicit_timeouts_retry_and_quantization(tmp_path, monkeypatch):
     monkeypatch.delenv("QDRANT_CLOUD_API_KEY", raising=False)
     config_path = tmp_path / "rag.yaml"

@@ -31,6 +31,8 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
         async def aclose(self): pass
         async def search(self, req, **kwargs):
             captured["query"] = req.query
+            captured["top_k"] = req.top_k
+            captured["rerank"] = req.rerank
             return type("R", (), {
                 "success": True, "status_code": 200,
                 "documents": [
@@ -54,6 +56,8 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
     state = {"messages": [HumanMessage(content="怎么退款？")], "workspace_ids": ["workspace-1"]}
     result = await rag_prefetch_node(state)
     assert captured["query"] == "怎么退款？"
+    assert captured["top_k"] == 5
+    assert captured["rerank"] is False
     assert "测试内容" in result["rag_context"]
 
 

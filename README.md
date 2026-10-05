@@ -62,7 +62,9 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 
 容器名与服务名一致。
 
-默认向量库使用 Qdrant：`kb_api/config/rag.yaml` 设置 `vector_db.qdrant.enable: true`、`vector_db.milvus.enable: false`，Qdrant 地址为 `http://qdrant:6333`。切换 Milvus 时修改此配置，并显式启动 profile：
+使用 Qdrant 时，在 `kb_api/config/rag.yaml` 设置 `vector_db.qdrant.enable: true`、`vector_db.milvus.enable: false`，Qdrant 地址为 `http://qdrant:6333`。使用 Milvus 时启用对应配置，并显式启动 profile：
+
+`vector_db.qdrant.bm25` 和 `vector_db.milvus.bm25` 分别控制建库时是否创建 BM25 字段及是否参与 sparse/hybrid 检索。Qdrant 使用向量库服务端的 `qdrant/bm25`，Milvus 使用内置 BM25 函数。关闭开关后现有集合仍可做 dense 检索；为已有 dense-only 集合开启 BM25 时，需要重新创建集合并重建文件索引。
 
 ```bash
 docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile milvus up -d --force-recreate

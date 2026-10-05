@@ -82,7 +82,6 @@ def test_build_state_uses_local_components(monkeypatch):
     class Component:
         def __init__(self):
             self.dense = SimpleNamespace(vector_size=3, ready=True)
-            self.sparse = None
             self.started = False
             self.closed = False
 

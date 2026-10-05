@@ -2,6 +2,7 @@ import pytest
 
 from kb_api.rag_retriever.clients.vector.milvus import MilvusVectorClient
 from kb_api.rag_retriever.clients.vector.qdrant import QdrantVectorClient
+from kb_api.rag_retriever.clients.vector import qdrant
 from kb_api.rag_retriever.core.scope import app_collection
 
 
@@ -38,6 +39,39 @@ def test_milvus_sparse_search_uses_database_bm25_without_sparse_model(monkeypatc
     assert captured["data"] == ["酒店接机"]
     assert captured["anns_field"] == "sparse_vector"
     assert captured["search_params"] == {"metric_type": "BM25", "params": {}}
+
+
+def test_milvus_bm25_can_be_disabled():
+    vector = MilvusVectorClient(dense=object(), bm25=False)
+
+    assert vector.supports_sparse_vector() is False
+    assert "sparse_vector" not in dict(vector._index_specs())
+
+
+def test_qdrant_search_uses_server_bm25_when_enabled(monkeypatch):
+    vector = QdrantVectorClient(dense=object(), bm25=True)
+    captured = {}
+
+    class Client:
+        def query_points(self, **kwargs):
+            captured.update(kwargs)
+            return type("Response", (), {"points": []})()
+
+    monkeypatch.setattr(vector, "_client", lambda: Client())
+    with app_collection("acme"):
+        vector.search_sparse("酒店接机", 5, None)
+
+    assert vector.supports_sparse_vector() is True
+    assert captured["using"] == "bm25"
+    assert captured["query"].model == "qdrant/bm25"
+    assert captured["query"].options["tokenizer"] == "multilingual"
+
+
+def test_qdrant_bm25_can_be_disabled():
+    vector = QdrantVectorClient(dense=object(), bm25=False)
+
+    assert vector.supports_sparse_vector() is False
+    assert qdrant._qdrant_bm25_config(vector.bm25) is None
 
 
 def test_qdrant_search_filter_scopes_files_and_workspaces():

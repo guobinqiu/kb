@@ -23,7 +23,7 @@ class Document(BaseModel):
 class SearchRequest(BaseModel):
     """RAG search 请求体。
 
-    LLM 只传业务查询参数；检索模式、候选池和 rerank 由 RAG 服务配置决定。
+    LLM 只传业务查询参数；检索模式和候选池由 RAG 服务配置决定。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -31,6 +31,7 @@ class SearchRequest(BaseModel):
     query: str | None = None
     workspace_ids: list[str]
     top_k: int | None = None
+    rerank: bool | None = None
     file_ids: list[str] | None = None
 
     @field_validator("workspace_ids")

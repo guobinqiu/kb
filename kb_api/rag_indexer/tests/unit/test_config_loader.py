@@ -49,6 +49,16 @@ def test_load_config_file_reads_qdrant_config(tmp_path):
     assert config.storage.endpoint_url == "https://storage.example:9000"
 
 
+@pytest.mark.parametrize("backend", ["qdrant", "milvus"])
+def test_vector_bm25_switch_is_loaded(tmp_path, backend):
+    raw = _base_config(backend)
+    raw["vector_db"][backend]["bm25"] = False
+    path = tmp_path / "rag.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    assert load_config_file(path).services.vector.bm25 is False
+
+
 def test_load_config_file_reads_service_bound_milvus_config(tmp_path):
 
     path = tmp_path / "milvus.yaml"

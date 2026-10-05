@@ -158,14 +158,6 @@ def _retrieve_dense(vector: VectorClient, metadata_filter, query: str, limit: in
 
 
 def _retrieve_sparse(vector: VectorClient, metadata_filter, query: str, limit: int) -> list[dict]:
-    if hasattr(vector, "encode_sparse_query") and hasattr(vector, "query_sparse_vector"):
-        with _search_span("rag.search.sparse.embedding", _model_attributes(getattr(vector, "sparse", None))) as span:
-            query_vector = vector.encode_sparse_query(query)
-            span.set_attribute("vector_count", 1)
-        with _search_span("rag.search.sparse.query", {"limit": limit}) as span:
-            results = vector.query_sparse_vector(query_vector, limit, metadata_filter)
-            span.set_attribute("result_count", len(results))
-            return results
     with _search_span("rag.search.sparse.query", {"limit": limit}) as span:
         results = vector.search_sparse(query, limit, metadata_filter)
         span.set_attribute("result_count", len(results))

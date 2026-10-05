@@ -103,7 +103,7 @@ def load_retriever() -> Retriever:
     if vector_config.provider == "qdrant":
         vector = QdrantVectorClient(
             dense=inference.dense,
-            sparse=inference.sparse,
+            bm25=vector_config.bm25,
             url=vector_config.base_url,
             timeout=vector_config.timeout,
             query_timeout=vector_config.query_timeout,
@@ -116,6 +116,7 @@ def load_retriever() -> Retriever:
     elif vector_config.provider == "milvus":
         vector = MilvusVectorClient(
             dense=inference.dense,
+            bm25=vector_config.bm25,
             uri=vector_config.base_url,
             timeout=vector_config.timeout,
             query_timeout=vector_config.query_timeout,

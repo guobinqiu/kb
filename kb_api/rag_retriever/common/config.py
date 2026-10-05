@@ -22,6 +22,7 @@ class QdrantQuantizationConfig:
 @dataclass(frozen=True)
 class VectorConfig:
     provider: str
+    bm25: bool = False
     base_url: str | None = None
     timeout: int = 30
     query_timeout: int = 10
@@ -101,6 +102,7 @@ def load_vector_config(path: str | Path | None = None) -> VectorConfig:
     }
     return VectorConfig(
         provider=provider.removesuffix("_cloud"),
+        bm25=_bool(selected.get("bm25", provider.startswith("milvus"))),
         base_url=selected.get("base_url"),
         timeout=timeout,
         query_timeout=int(selected.get("query_timeout", timeout)),

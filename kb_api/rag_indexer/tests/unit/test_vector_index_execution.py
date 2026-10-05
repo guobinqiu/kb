@@ -8,7 +8,6 @@ from kb_api.rag_indexer.core.scope import app_collection
 from kb_api.rag_indexer.common import deadline
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 from contextvars import ContextVar
-from threading import Barrier
 from kb_api.rag_indexer.core.scope import current_collection
 from kb_api.rag_indexer.common.config import RetryConfig
 from pymilvus.decorators import retry_on_rpc_failure
@@ -37,9 +36,8 @@ def make_vector(backend, events, after):
         return Mock(side_effect=invoke)
 
     dense = SimpleNamespace(embed_documents=call("dense", [[0.1, 0.2]]))
-    sparse = SimpleNamespace(embed_documents=call("sparse", [{1: 0.5}]))
     cls = milvus.MilvusVectorClient if backend == "milvus" else qdrant.QdrantVectorClient
-    vector = cls(dense=dense, timeout=30) if backend == "milvus" else cls(dense=dense, sparse=sparse, timeout=30)
+    vector = cls(dense=dense, timeout=30)
     sdk = Mock()
     sdk.has_collection.return_value = False
     sdk.upsert = call("upsert", None)
@@ -51,10 +49,9 @@ def make_vector(backend, events, after):
     return vector
 
 
-@pytest.mark.parametrize("failure", [None, "dense", "sparse"])
-def test_qdrant_index_embeddings_run_concurrently_with_request_context(failure):
+@pytest.mark.parametrize("failure", [None, "dense"])
+def test_qdrant_index_embedding_preserves_request_context(failure):
 
-    rendezvous = Barrier(2, timeout=2)
     trace = ContextVar("test_trace")
     error = RuntimeError("embedding failed")
     vector = make_vector("qdrant", [], lambda name: None)
@@ -63,13 +60,11 @@ def test_qdrant_index_embeddings_run_concurrently_with_request_context(failure):
         assert current_collection() == "test_chunks"
         assert trace.get() == "index-trace"
         assert 0 < deadline.request_timeout(30) <= 10
-        rendezvous.wait()
         if name == failure:
             raise error
         return result
 
     vector.dense.embed_documents.side_effect = lambda texts: embed("dense", [[0.1, 0.2]])
-    vector.sparse.embed_documents.side_effect = lambda texts: embed("sparse", [{1: 0.5}])
     token = trace.set("index-trace")
     try:
         with app_collection("test"), deadline.index_deadline(10):
@@ -84,7 +79,6 @@ def test_qdrant_index_embeddings_run_concurrently_with_request_context(failure):
     finally:
         trace.reset(token)
     vector.dense.embed_documents.assert_called_once_with(["hello"])
-    vector.sparse.embed_documents.assert_called_once_with(["hello"])
 
 
 @pytest.mark.parametrize("backend,stages", [
@@ -103,7 +97,6 @@ def test_index_stops_after_each_expired_stage(monkeypatch, backend, stages):
                 now[0] = 10.0
 
         vector = make_vector(backend, events, expire)
-        vector.sparse = None
         with app_collection("test"), deadline.index_deadline(5):
             with pytest.raises(UpstreamServiceError) as raised:
                 vector.add_file_chunks(CHUNKS, "file")
@@ -127,7 +120,6 @@ def test_index_propagates_original_failure_without_retry(backend, stages):
                 raise error
 
         vector = make_vector(backend, events, fail)
-        vector.sparse = None
         with app_collection("test"), pytest.raises(RuntimeError) as raised:
             vector.add_file_chunks(CHUNKS, "file")
         assert raised.value is error
@@ -146,7 +138,6 @@ def test_vector_write_retries_after_embeddings_without_reembedding(monkeypatch, 
             raise error
 
     vector = make_vector(backend, events, fail_once)
-    vector.sparse = None
     vector.retry = RetryConfig(max_attempts=3, interval_seconds=0.5)
     with app_collection("test"):
         assert vector.add_file_chunks(CHUNKS, "file") == 1

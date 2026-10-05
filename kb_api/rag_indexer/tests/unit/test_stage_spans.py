@@ -1,11 +1,9 @@
-from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import httpx
 import pytest
 
-from kb_api.rag_indexer.clients.vector.embeddings import embed_documents
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
 from kb_api.rag_indexer.core.index import errors, service
 from kb_api.rag_indexer.core.scope import app_collection
@@ -64,39 +62,6 @@ def test_missing_blocks_still_fails_in_chunk_stage(caplog):
     assert raised.value.service == "index"
     records = [row for row in caplog.records if getattr(row, "event", None) == "index_stage"]
     assert [(row.stage, row.status) for row in records] == [("parse", "success"), ("chunk", "failed")]
-
-
-@pytest.mark.parametrize("failure", ["dense", "sparse"])
-def test_embedding_error_preserves_exception(failure):
-    error = RuntimeError("https://private password=secret")
-    barrier = Barrier(2, timeout=3)
-
-    def embed(kind):
-        barrier.wait()
-        if kind == failure:
-            raise error
-        return [[0.1]] if kind == "dense" else [{1: 0.2}]
-
-    with pytest.raises(RuntimeError) as raised:
-        embed_documents(lambda: embed("dense"), lambda: embed("sparse"))
-    assert raised.value is error
-
-
-@pytest.mark.parametrize("sparse", [False, True])
-def test_embedding_keeps_parallel_results(sparse):
-    barrier = Barrier(2, timeout=3)
-
-    def dense():
-        if sparse:
-            barrier.wait()
-        return [[0.1, 0.2]]
-
-    def sparse_call():
-        barrier.wait()
-        return [{1: 0.5}]
-
-    result = embed_documents(dense, sparse_call if sparse else None)
-    assert result == ([[0.1, 0.2]], [{1: 0.5}] if sparse else None)
 
 
 @pytest.mark.parametrize("backend", ["milvus", "qdrant"])

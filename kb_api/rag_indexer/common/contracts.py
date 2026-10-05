@@ -67,22 +67,6 @@ class Dense(Protocol):
         ...
 
 
-class Sparse(Protocol):
-    ready: bool
-
-    def start(self) -> None:
-        ...
-
-    def stop(self) -> None:
-        ...
-
-    def embed_query(self, text: str) -> dict[int, float]:
-        ...
-
-    def embed_documents(self, texts: list[str]) -> list[dict[int, float]]:
-        ...
-
-
 class Parser(Protocol):
     ready: bool
 

@@ -136,7 +136,6 @@ def test_local_readiness_and_close(make_client):
         return httpx.Response(200)
 
     client = make_client(handler)
-    assert client.sparse is None
     assert client.ping() and client.ping()
     client.close()
     assert not client.ping()

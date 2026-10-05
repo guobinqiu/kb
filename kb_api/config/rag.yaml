@@ -119,6 +119,7 @@ inference:
 vector_db:
   qdrant:
     enable: false
+    bm25: true
     base_url: http://qdrant:6333
     query_timeout: 10
     write_timeout: 60
@@ -135,6 +136,7 @@ vector_db:
 
   milvus:
     enable: true
+    bm25: true
     base_url: http://milvus:19530
     query_timeout: 10
     write_timeout: 60
@@ -146,6 +148,7 @@ vector_db:
 
   qdrant_cloud:
     enable: false
+    bm25: true
     base_url: https://ba2d743e-5dad-4ee8-b181-e3a05e4df4ae.sa-east-1-0.aws.cloud.qdrant.io
     query_timeout: 10
     write_timeout: 60
@@ -162,6 +165,7 @@ vector_db:
 
   milvus_cloud:
     enable: false
+    bm25: true
     base_url: https://in03-748dd5b2366e2b6.serverless.ali-cn-hangzhou.cloud.zilliz.com.cn
     query_timeout: 10
     write_timeout: 60

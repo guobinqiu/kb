@@ -66,7 +66,7 @@ def _build_state(config: AppConfig):
     if vector_backend == "qdrant":
         vector = QdrantVectorClient(
             dense=inference.dense,
-            sparse=inference.sparse,
+            bm25=config.services.vector.bm25,
             url=config.services.vector.base_url,
             timeout=config.services.vector.timeout,
             query_timeout=config.services.vector.query_timeout,
@@ -80,6 +80,7 @@ def _build_state(config: AppConfig):
     elif vector_backend == "milvus":
         vector = MilvusVectorClient(
             dense=inference.dense,
+            bm25=config.services.vector.bm25,
             uri=config.services.vector.base_url,
             timeout=config.services.vector.timeout,
             query_timeout=config.services.vector.query_timeout,

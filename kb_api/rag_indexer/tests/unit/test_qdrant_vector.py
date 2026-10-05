@@ -28,22 +28,6 @@ class FakeDense:
         return [[0.1, 0.2, 0.3] for _ in texts]
 
 
-class FakeSparse:
-    ready = True
-
-    def __init__(self):
-        self.queries = []
-        self.documents = []
-
-    def embed_query(self, text):
-        self.queries.append(text)
-        return {1: 0.5, 8: 1.0}
-
-    def embed_documents(self, texts):
-        self.documents.append(list(texts))
-        return [{1: 0.5, 8: 1.0} for _ in texts]
-
-
 class FakeCount:
     count = 0
 
@@ -56,9 +40,9 @@ def _chunk(chunk_id="chunk-1", content="通用知识"):
     }
 
 
-def _started_vector(client, dense=None, sparse=None, **kwargs):
+def _started_vector(client, dense=None, **kwargs):
 
-    vector = QdrantVectorClient(dense=dense or FakeDense(), sparse=sparse, **kwargs)
+    vector = QdrantVectorClient(dense=dense or FakeDense(), **kwargs)
     vector.client = client
     vector.start()
     return vector
@@ -89,7 +73,7 @@ def test_add_file_chunks_writes_file_metadata():
     assert points[0].payload["metadata"]["filename"] == "faq.pdf"
 
 
-def test_add_file_chunks_writes_sparse_vector_when_configured():
+def test_add_file_chunks_sends_text_for_database_bm25():
 
     calls = []
 
@@ -100,14 +84,15 @@ def test_add_file_chunks_writes_sparse_vector_when_configured():
         def upsert(self, **kwargs):
             calls.append(kwargs["points"])
 
-    vector = _started_vector(FakeClient(), sparse=FakeSparse())
+    vector = _started_vector(FakeClient(), bm25=True)
 
     with app_collection("imsdom"):
         vector.add_file_chunks([_chunk(content="华为给我们一万六千张卡")], file_id="file-a")
 
-    sparse = calls[0][0].vector["sparse"]
-    assert sparse.indices == [1, 8]
-    assert sparse.values == [0.5, 1.0]
+    document = calls[0][0].vector["bm25"]
+    assert document.text == "华为给我们一万六千张卡"
+    assert document.model == "qdrant/bm25"
+    assert document.options["tokenizer"] == "multilingual"
 
 
 def test_metadata_filter_combines_file_and_workspace_ids():
@@ -327,13 +312,13 @@ def test_qdrant_client_passes_cloud_authentication(monkeypatch, url, api_key):
     monkeypatch.setattr(qdrant, "QdrantClient", FakeClient)
     quantization = QdrantQuantizationConfig(enable=True)
 
-    vector = qdrant.QdrantVectorClient(FakeDense(), None, url, 30, quantization, api_key=api_key)
+    vector = qdrant.QdrantVectorClient(dense=FakeDense(), url=url, timeout=30, quantization=quantization, api_key=api_key)
 
     assert created == []
     client = vector._client()
     assert vector._client() is client
     assert vector.quantization is quantization
-    assert created == [{"url": url, "timeout": 30, "check_compatibility": False, "api_key": api_key}]
+    assert created == [{"url": url, "timeout": 30, "check_compatibility": False, "api_key": api_key, "cloud_inference": False}]
 
 
 def test_qdrant_list_chunks_uses_native_scroll_cursor_without_full_scan():
@@ -451,7 +436,7 @@ def test_qdrant_create_collection_can_enable_int8_quantization():
     assert quantization.scalar.always_ram is True
 
 
-def test_qdrant_create_collection_adds_sparse_vector_when_configured():
+def test_qdrant_create_collection_adds_bm25_vector_when_enabled():
     calls = []
 
     class FakeClient:
@@ -470,13 +455,14 @@ def test_qdrant_create_collection_adds_sparse_vector_when_configured():
         def create_payload_index(self, **kwargs):
             pass
 
-    vector = _started_vector(FakeClient(), sparse=FakeSparse())
+    vector = _started_vector(FakeClient(), bm25=True)
     vector.ensure_collections("imsdom_chunks")
 
-    assert "sparse" in calls[0]["sparse_vectors_config"]
+    assert "bm25" in calls[0]["sparse_vectors_config"]
+    assert calls[0]["sparse_vectors_config"]["bm25"].modifier == qdrant.models.Modifier.IDF
 
 
-def test_qdrant_sparse_search_uses_sparse_vector_name():
+def test_qdrant_sparse_search_sends_text_for_database_bm25():
 
     calls = []
 
@@ -488,13 +474,63 @@ def test_qdrant_sparse_search_uses_sparse_vector_name():
             calls.append(kwargs)
             return FakeResponse()
 
-    vector = _started_vector(FakeClient(), sparse=FakeSparse())
+    vector = _started_vector(FakeClient(), bm25=True)
 
     with app_collection("imsdom"):
         vector.search_sparse("query", 3, None)
 
-    assert calls[0]["using"] == "sparse"
-    assert calls[0]["query"].indices == [1, 8]
+    assert calls[0]["using"] == "bm25"
+    assert calls[0]["query"].text == "query"
+    assert calls[0]["query"].model == "qdrant/bm25"
+
+
+def test_qdrant_client_uses_server_side_inference_for_bm25(monkeypatch):
+    captured = {}
+
+    def create_client(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(qdrant, "QdrantClient", create_client)
+    vector = QdrantVectorClient(dense=FakeDense(), bm25=True)
+    vector._client()
+
+    assert captured["cloud_inference"] is True
+
+
+def test_qdrant_enabling_bm25_rejects_existing_dense_only_collection():
+    class FakeClient:
+        def collection_exists(self, collection_name):
+            return True
+
+        def get_collection(self, collection_name):
+            return type("Info", (), {"config": type("Config", (), {"params": type("Params", (), {
+                "vectors": {"dense": type("Dense", (), {"size": 3})()}, "sparse_vectors": {},
+            })()})()})()
+
+    vector = _started_vector(FakeClient(), bm25=True)
+
+    with pytest.raises(ValueError, match="has no BM25 vector"):
+        vector.ensure_collections("imsdom_chunks")
+
+
+def test_qdrant_disabling_bm25_accepts_existing_bm25_collection():
+    class FakeClient:
+        def collection_exists(self, collection_name):
+            return True
+
+        def get_collection(self, collection_name):
+            return type("Info", (), {"config": type("Config", (), {"params": type("Params", (), {
+                "vectors": {"dense": type("Dense", (), {"size": 3})()},
+                "sparse_vectors": {"bm25": qdrant.models.SparseVectorParams(modifier=qdrant.models.Modifier.IDF)},
+            })()})()})()
+
+        def create_payload_index(self, **kwargs):
+            pass
+
+    vector = _started_vector(FakeClient(), bm25=False)
+
+    vector.ensure_collections("imsdom_chunks")
 
 
 def test_qdrant_ensure_collection_rejects_existing_dense_dimension_mismatch():

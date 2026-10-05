@@ -13,11 +13,10 @@ from qdrant_client.http import models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from kb_api.rag_indexer.common.config import QdrantQuantizationConfig, RetryConfig
-from kb_api.rag_indexer.common.contracts import Dense, Sparse
+from kb_api.rag_indexer.common.contracts import Dense
 from kb_api.rag_indexer.common.deadline import check_deadline, request_timeout
 from kb_api.rag_indexer.common.retry import retry_call
 from kb_api.rag_indexer.common.upstream import UpstreamServiceError
-from kb_api.rag_indexer.clients.vector.embeddings import embed_documents
 from kb_api.rag_indexer.core.scope import app_collection, collection_name_for_app, current_app_id, current_collection
 import httpx
 from qdrant_client.http.exceptions import ResponseHandlingException
@@ -32,7 +31,7 @@ class QdrantVectorClient:
     def __init__(
         self,
         dense: Dense | None = None,
-        sparse: Sparse | None = None,
+        bm25: bool = False,
         url: str | None = None,
         timeout: int | None = None,
         quantization: QdrantQuantizationConfig | None = None,
@@ -46,7 +45,7 @@ class QdrantVectorClient:
         if dense is None:
             raise ValueError("dense is required")
         self.dense = dense
-        self.sparse = sparse
+        self.bm25 = bm25
         self.url = url or "http://localhost:6333"
         self.timeout = timeout
         self.query_timeout = query_timeout if query_timeout is not None else timeout
@@ -185,7 +184,7 @@ class QdrantVectorClient:
         return True
 
     def supports_sparse_vector(self) -> bool:
-        return self.sparse is not None
+        return self.bm25
 
     def ensure_app_collection(self, app_id: str) -> str:
         collection_name = collection_name_for_app(app_id)
@@ -233,16 +232,10 @@ class QdrantVectorClient:
     def search_dense(self, query: str, limit: int, metadata_filter: models.Filter) -> list[dict]:
         return self.query_dense_vector(self.encode_dense_query(query), limit, metadata_filter)
 
-    def encode_sparse_query(self, query: str):
-        if self.sparse is None:
-            raise RuntimeError("sparse is not configured")
-        return _qdrant_sparse_vector(self.sparse.embed_query(query))
-
-    def query_sparse_vector(self, query_vector, limit: int, metadata_filter: models.Filter) -> list[dict]:
-        return self._query_points(query_vector, "sparse", limit, metadata_filter)
-
     def search_sparse(self, query: str, limit: int, metadata_filter: models.Filter) -> list[dict]:
-        return self.query_sparse_vector(self.encode_sparse_query(query), limit, metadata_filter)
+        if not self.bm25:
+            raise RuntimeError("BM25 is not configured")
+        return self._query_points(_bm25_document(query), "bm25", limit, metadata_filter)
 
     def ensure_collections(self, collection_name: str | None = None) -> None:
         client = self._client()
@@ -250,6 +243,7 @@ class QdrantVectorClient:
         target_collection = collection_name or self._chunks_collection()
         if client.collection_exists(target_collection):
             self._ensure_dense_vector_size(target_collection, dense_size)
+            self._ensure_bm25_vector(target_collection)
             self.ensure_payload_indexes(target_collection)
             return
         self._write_operation(
@@ -258,7 +252,7 @@ class QdrantVectorClient:
                 vectors_config={
                     "dense": models.VectorParams(size=dense_size, distance=models.Distance.COSINE),
                 },
-                sparse_vectors_config=_qdrant_sparse_vectors_config(self.sparse),
+                sparse_vectors_config=_qdrant_bm25_config(self.bm25),
                 quantization_config=_quantization_config(self.quantization),
                 timeout=self._init_timeout(),
             ),
@@ -285,7 +279,7 @@ class QdrantVectorClient:
 
     def _client(self) -> QdrantClient:
         if self.client is None:
-            self.client = QdrantClient(url=self.url, timeout=self._timeout_value(self.query_timeout), check_compatibility=False, api_key=self.api_key)
+            self.client = QdrantClient(url=self.url, timeout=self._timeout_value(self.query_timeout), check_compatibility=False, api_key=self.api_key, cloud_inference=self.bm25)
         return self.client
 
     def _operation_timeout(self, timeout: int | None) -> int:
@@ -321,6 +315,14 @@ class QdrantVectorClient:
         actual_size = _dense_vector_size_from_collection(self._client().get_collection(collection_name))
         if actual_size is not None and actual_size != expected_size:
             raise ValueError(f"dense vector dimension mismatch: expected {expected_size}, actual {actual_size}")
+
+    def _ensure_bm25_vector(self, collection_name: str) -> None:
+        if not self.bm25:
+            return
+        params = self._client().get_collection(collection_name).config.params
+        sparse_vectors = getattr(params, "sparse_vectors", None) or {}
+        if "bm25" not in sparse_vectors or sparse_vectors["bm25"].modifier != models.Modifier.IDF:
+            raise ValueError(f"Qdrant collection {collection_name} has no BM25 vector; recreate the collection before enabling BM25")
 
     def _chunks_collection(self) -> str:
         return current_collection()
@@ -388,16 +390,13 @@ class QdrantVectorClient:
     def _to_points(self, chunks: list[dict], file_id: str) -> list[models.PointStruct]:
         app_id = current_app_id()
         contents = [chunk["content"] for chunk in chunks]
-        dense_vectors, sparse_vectors = embed_documents(
-            lambda: self._dense_vectors_for_documents(contents, file_id, app_id),
-            (lambda: self._sparse_vectors_for_documents(contents)) if self.sparse is not None else None,
-        )
+        dense_vectors = self._dense_vectors_for_documents(contents, file_id, app_id)
         points = []
         for index, (chunk, dense_vector) in enumerate(zip(chunks, dense_vectors)):
             point_id = _point_id(chunk["id"])
             vector = {"dense": dense_vector}
-            if sparse_vectors is not None:
-                vector["sparse"] = _qdrant_sparse_vector(sparse_vectors[index])
+            if self.bm25:
+                vector["bm25"] = _bm25_document(contents[index])
             points.append(models.PointStruct(id=point_id, vector=vector, payload=_payload_for_chunk(chunk, file_id)))
         return points
 
@@ -408,11 +407,6 @@ class QdrantVectorClient:
         total_ms = round((time.perf_counter() - started) * 1000, 1)
         logger.info("Dense embedding done", extra={"event": "dense_embedding_done", "stage": "embedding", "backend": "model", "retriever": "dense", "app_id": app_id, "file_id": file_id, "chunk_count": len(contents), "total_ms": total_ms, "status": "ok"})
         return dense_vectors
-
-    def _sparse_vectors_for_documents(self, contents: list[str]) -> list[dict[int, float]]:
-        if self.sparse is None:
-            raise RuntimeError("sparse is not configured")
-        return self.sparse.embed_documents(contents)
 
 def _wait_collection_ready(client: QdrantClient, collection_name: str, timeout: int = 30) -> None:
     client.get_collection(collection_name)
@@ -441,15 +435,17 @@ def _quantization_config(config: QdrantQuantizationConfig | None):
     return models.ScalarQuantization(scalar=scalar)
 
 
-def _qdrant_sparse_vectors_config(sparse: Sparse | None):
-    if sparse is None:
+def _qdrant_bm25_config(bm25: bool):
+    if not bm25:
         return None
-    return {"sparse": models.SparseVectorParams()}
+    return {"bm25": models.SparseVectorParams(modifier=models.Modifier.IDF)}
 
 
-def _qdrant_sparse_vector(values: dict[int, float]):
-    pairs = sorted((int(index), float(value)) for index, value in values.items() if float(value) != 0.0)
-    return models.SparseVector(indices=[index for index, _ in pairs], values=[value for _, value in pairs])
+def _bm25_document(text: str) -> models.Document:
+    return models.Document(
+        text=text, model="qdrant/bm25",
+        options={"tokenizer": "multilingual", "stemmer": {"type": "none"}, "stopwords": {}},
+    )
 
 
 def _dense_vector_size_from_collection(collection_info) -> int | None:

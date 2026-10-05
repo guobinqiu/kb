@@ -10,7 +10,6 @@ from kb_api.rag_indexer.inference.providers import siliconflow, tei
 class InferenceComponents:
     def __init__(self, dense, *, embedding: EmbeddingSpec | None = None):
         self.dense = dense
-        self.sparse = None
         self.embedding = embedding
         self.ready = True
 

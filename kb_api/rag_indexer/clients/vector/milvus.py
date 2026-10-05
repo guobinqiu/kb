@@ -33,6 +33,7 @@ class MilvusVectorClient:
     def __init__(
         self,
         dense: Dense | None = None,
+        bm25: bool = True,
         uri: str | None = None,
         timeout: int | None = None,
         query_timeout: int | None = None,
@@ -45,6 +46,7 @@ class MilvusVectorClient:
         if dense is None:
             raise ValueError("dense is required")
         self.dense = dense
+        self.bm25 = bm25
         self.uri = uri or "http://localhost:19530"
         self.timeout = timeout
         self.query_timeout = query_timeout if query_timeout is not None else timeout
@@ -170,7 +172,7 @@ class MilvusVectorClient:
         return True
 
     def supports_sparse_vector(self) -> bool:
-        return True
+        return self.bm25
 
     def ensure_app_collection(self, app_id: str) -> str:
         collection_name = collection_name_for_app(app_id)
@@ -291,7 +293,7 @@ class MilvusVectorClient:
         schema.add_field(field_name="pk", datatype=DataType.VARCHAR, is_primary=True, max_length=64)
         schema.add_field(
             field_name="text", datatype=DataType.VARCHAR, max_length=65535,
-            enable_analyzer=True, analyzer_params={"tokenizer": "jieba"},
+            enable_analyzer=self.bm25, analyzer_params={"tokenizer": "jieba"} if self.bm25 else None,
         )
         schema.add_field(field_name="file_id", datatype=DataType.VARCHAR, max_length=128)
         schema.add_field(field_name="workspace_id", datatype=DataType.VARCHAR, max_length=128)
@@ -299,13 +301,14 @@ class MilvusVectorClient:
         schema.add_field(field_name="filename", datatype=DataType.VARCHAR, max_length=1024)
         schema.add_field(field_name="created_at", datatype=DataType.VARCHAR, max_length=64, nullable=True)
         schema.add_field(field_name=self._dense_vector_field(), datatype=DataType.FLOAT_VECTOR, dim=self._dense_vector_size())
-        schema.add_field(field_name=self._sparse_vector_field(), datatype=DataType.SPARSE_FLOAT_VECTOR)
-        schema.add_function(Function(
-            name="text_bm25",
-            function_type=FunctionType.BM25,
-            input_field_names=["text"],
-            output_field_names=[self._sparse_vector_field()],
-        ))
+        if self.bm25:
+            schema.add_field(field_name=self._sparse_vector_field(), datatype=DataType.SPARSE_FLOAT_VECTOR)
+            schema.add_function(Function(
+                name="text_bm25",
+                function_type=FunctionType.BM25,
+                input_field_names=["text"],
+                output_field_names=[self._sparse_vector_field()],
+            ))
         return schema
 
     def _collection_index_params(self):
@@ -316,7 +319,8 @@ class MilvusVectorClient:
 
     def _index_specs(self) -> list[tuple[str, dict]]:
         specs = [(self._dense_vector_field(), self._dense_index_params())]
-        specs.append((self._sparse_vector_field(), self._sparse_index_params()))
+        if self.bm25:
+            specs.append((self._sparse_vector_field(), self._sparse_index_params()))
         specs.append(("file_id", {"index_type": "INVERTED"}))
         specs.append(("workspace_id", {"index_type": "INVERTED"}))
         specs.append(("chunk_index", {"index_type": "INVERTED"}))
@@ -344,6 +348,8 @@ class MilvusVectorClient:
             raise ValueError(f"dense vector dimension mismatch: expected {expected_size}, actual {actual_size}")
 
     def _ensure_collection_compatible(self, collection_name: str) -> None:
+        if not self.bm25:
+            return
         client = self._client()
         if not client.has_collection(collection_name, **self._init_request_options()):
             return

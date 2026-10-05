@@ -24,7 +24,6 @@ def spans(monkeypatch):
 
 class Vector:
     dense = SimpleNamespace(model="dense-model")
-    sparse = SimpleNamespace(model="sparse-model")
 
     def build_metadata_filter(self, file_ids, workspace_ids):
         return workspace_ids
@@ -32,13 +31,10 @@ class Vector:
     def encode_dense_query(self, query):
         return [0.1, 0.2]
 
-    def encode_sparse_query(self, query):
-        return {1: 0.5}
-
     def query_dense_vector(self, vector, limit, metadata_filter):
         return [{"id": "dense", "content": "private document", "_score": 0.9}]
 
-    def query_sparse_vector(self, vector, limit, metadata_filter):
+    def search_sparse(self, query, limit, metadata_filter):
         return [{"id": "sparse", "content": "private document", "_score": 0.8}]
 
 
@@ -74,11 +70,12 @@ def test_search_spans_inherit_entry_context_and_record_stages(spans, mode):
     assert root.attributes["result_count"] == len(result)
     kinds = ("dense", "sparse") if mode == "hybrid" else (mode,)
     for kind in kinds:
-        for stage in ("embedding", "query"):
+        for stage in (("embedding", "query") if kind == "dense" else ("query",)):
             span = by_name[f"rag.search.{kind}.{stage}"]
             assert span.parent.span_id == root.context.span_id
             assert span.context.trace_id == root.context.trace_id
-        assert by_name[f"rag.search.{kind}.embedding"].attributes["model"] == f"{kind}-model"
+        if kind == "dense":
+            assert by_name[f"rag.search.{kind}.embedding"].attributes["model"] == "dense-model"
         assert by_name[f"rag.search.{kind}.query"].attributes["result_count"] == 1
     for name in ("rag.search.dedupe", "rag.search.rerank"):
         assert by_name[name].parent.span_id == root.context.span_id
@@ -96,7 +93,7 @@ def test_fallback_marks_child_error_without_failing_search(spans, failure):
     error = UpstreamServiceError(service="inference", error="https://private password=secret", retryable=True, status_code=503)
 
     class FailingVector(Vector):
-        def query_sparse_vector(self, *args):
+        def search_sparse(self, *args):
             raise error
 
     class FailingRerank(Rerank):

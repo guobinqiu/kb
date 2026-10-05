@@ -516,6 +516,15 @@ def test_milvus_bm25_index_uses_sparse_inverted_index():
     assert dict(vector._index_specs())["sparse_vector"] == {"metric_type": "BM25", "index_type": "SPARSE_INVERTED_INDEX", "params": {}}
 
 
+def test_milvus_without_bm25_creates_only_dense_vector():
+    vector = milvus.MilvusVectorClient(dense=FakeDense(), bm25=False)
+
+    assert vector.supports_sparse_vector() is False
+    assert "sparse_vector" not in dict(vector._index_specs())
+    schema = vector._collection_schema().to_dict()
+    assert "sparse_vector" not in {field["name"] for field in schema["fields"]}
+
+
 def test_milvus_ensure_app_collection_creates_collection_without_placeholder_documents(monkeypatch):
     FakeMilvusClient.instances = []
     monkeypatch.setattr("pymilvus.MilvusClient", FakeMilvusClient)
