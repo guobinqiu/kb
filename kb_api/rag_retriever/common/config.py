@@ -41,6 +41,7 @@ class SearchConfig:
     rerank_fetch_k: int = 20
     rerank: bool = False
     rrf_k: int = 60
+    hybrid_fetch_k: int = 20
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -140,4 +141,5 @@ def load_search_config(path: str | Path | None = None) -> SearchConfig:
         rerank_fetch_k=int(raw.get("rerank_fetch_k", 20)),
         rerank=bool(raw.get("rerank", False)),
         rrf_k=int(hybrid.get("rrf_k", raw.get("rrf_k", 60))),
+        hybrid_fetch_k=int(hybrid.get("fetch_k", 20)),
     )

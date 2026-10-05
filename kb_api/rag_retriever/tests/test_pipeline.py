@@ -211,6 +211,33 @@ def test_executor_hybrid_merges_dense_and_sparse_results():
     assert results[0]["score"] == pytest.approx(2 / 61)
 
 
+def test_executor_hybrid_fetches_more_candidates_than_final_top_k():
+    class Vector(FakeSparseVector):
+        def query_dense_vector(self, query_vector, limit, metadata_filter):
+            self.calls.append(("dense_limit", limit))
+            return [
+                {"id": f"dense-{rank}", "content": f"dense-{rank}", "metadata": {}, "_score": 1 / rank}
+                for rank in range(1, limit + 1)
+            ]
+
+        def search_sparse(self, query, limit, metadata_filter):
+            self.calls.append(("sparse_limit", limit))
+            return [
+                {"id": "dense-4" if rank == 11 else f"sparse-{rank}", "content": f"sparse-{rank}", "metadata": {}, "_score": 1 / rank}
+                for rank in range(1, limit + 1)
+            ]
+
+    vector = Vector()
+    results = search_mod._SearchExecutor(
+        search_mod.SearchPlan("query", top_k=5, mode="hybrid", rrf_k=60),
+        vector=vector,
+    ).execute()
+
+    assert "dense-4" in [item["id"] for item in results]
+    assert ("dense_limit", 20) in vector.calls
+    assert ("sparse_limit", 20) in vector.calls
+
+
 def test_executor_hybrid_runs_dense_and_sparse_in_parallel():
     concurrent_queries = Barrier(2, timeout=5)
 

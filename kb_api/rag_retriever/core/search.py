@@ -45,6 +45,7 @@ class SearchPlan:
     rerank_fetch_k: int | None = None
     rerank: bool = False
     rrf_k: int = 60
+    hybrid_fetch_k: int = 20
     file_ids: list[str] | None = None
     workspace_ids: list[str] | None = None
 
@@ -98,6 +99,8 @@ class _SearchExecutor:
 
     def _prepare_plan(self):
         retrieve_limit = self.plan.rerank_fetch_k if self.plan.rerank and self.plan.rerank_fetch_k is not None else self.plan.top_k
+        if self.plan.mode == "hybrid":
+            retrieve_limit = max(retrieve_limit, self.plan.hybrid_fetch_k)
         return {
             "retrieve_limit": retrieve_limit,
             "metadata_filter": self.vector_client.build_metadata_filter(self.plan.file_ids, self.plan.workspace_ids),

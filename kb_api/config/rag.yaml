@@ -11,6 +11,7 @@ search:
   rerank: true
   hybrid:
     rrf_k: 60
+    fetch_k: 20
 
 storage:
   endpoint_url: http://minio:9000

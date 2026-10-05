@@ -46,6 +46,7 @@ class Retriever:
             rerank_fetch_k=request.rerank_fetch_k or self.search_config.rerank_fetch_k,
             rerank=rerank,
             rrf_k=request.rrf_k or self.search_config.rrf_k,
+            hybrid_fetch_k=self.search_config.hybrid_fetch_k,
             file_ids=request.file_ids,
             workspace_ids=request.workspace_ids,
         )
@@ -84,7 +85,7 @@ def _replace_mode(plan: SearchPlan, mode: str) -> SearchPlan:
     return SearchPlan(
         plan.query, app_id=plan.app_id, mode=mode, top_k=plan.top_k,
         rerank_fetch_k=plan.rerank_fetch_k, rerank=plan.rerank,
-        rrf_k=plan.rrf_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
+        rrf_k=plan.rrf_k, hybrid_fetch_k=plan.hybrid_fetch_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
     )
 
 
@@ -92,7 +93,7 @@ def _disable_rerank(plan: SearchPlan) -> SearchPlan:
     return SearchPlan(
         plan.query, app_id=plan.app_id, mode=plan.mode, top_k=plan.top_k,
         rerank_fetch_k=plan.rerank_fetch_k, rerank=False,
-        rrf_k=plan.rrf_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
+        rrf_k=plan.rrf_k, hybrid_fetch_k=plan.hybrid_fetch_k, file_ids=plan.file_ids, workspace_ids=plan.workspace_ids,
     )
 
 
