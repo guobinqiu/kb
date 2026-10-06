@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -27,6 +28,12 @@ from kb_api.api.telemetry import flush_telemetry, get_trace_id, install_search_t
 
 
 logger = logging.getLogger("kb_api")
+
+
+def _keep_access_log(record: logging.LogRecord) -> bool:
+    if record.name != "uvicorn.access" or not isinstance(record.args, tuple) or len(record.args) != 5:
+        return True
+    return urlsplit(str(record.args[2])).path != "/health"
 
 
 def _error_detail(detail) -> str:
@@ -129,6 +136,7 @@ def create_app(
             dao.close()
             flush_telemetry()
 
+    logging.getLogger("uvicorn.access").addFilter(_keep_access_log)
     application = FastAPI(title="KB API", version="0.1.0", lifespan=lifespan)
     install_search_tracing(application, service_name="kb_api")
     application.add_exception_handler(
