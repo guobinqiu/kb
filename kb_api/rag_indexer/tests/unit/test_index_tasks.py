@@ -12,6 +12,7 @@ from kb_api.rag_indexer.core.index.errors import index_stage
 class FakeVector:
     def __init__(self):
         self.deleted_file_ids = []
+        self.ensured_app_ids = []
 
     @contextmanager
     def app_scope(self, app_id):
@@ -20,6 +21,10 @@ class FakeVector:
     def delete_file_chunks(self, file_id):
         self.deleted_file_ids.append(file_id)
         return 3
+
+    def ensure_app_collection(self, app_id):
+        self.ensured_app_ids.append(app_id)
+        return collection_name_for_app(app_id)
 
 
 def test_process_index_task_indexes_file_in_app_scope_with_workspace_metadata(monkeypatch):
@@ -54,6 +59,7 @@ def test_process_index_task_indexes_file_in_app_scope_with_workspace_metadata(mo
         "filename": "file.pdf",
         "extra_metadata": {"workspace_id": "2f59393d-41b8-4cab-8bbd-2aee2e7c7234"},
     }]
+    assert vector.ensured_app_ids == ["imsdom"]
     assert result == {
         "operation": "index",
         "file_id": "file-1",
@@ -83,6 +89,7 @@ def test_process_delete_task_deletes_file_in_app_scope():
     )
 
     assert vector.deleted_file_ids == ["file-1"]
+    assert vector.ensured_app_ids == []
     assert result == {
         "operation": "delete",
         "file_id": "file-1",

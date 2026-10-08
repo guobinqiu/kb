@@ -54,7 +54,6 @@ const appsStore = useAppsStore()
 const authStore = useAuthStore()
 const llmChatStore = useLlmChatStore()
 const { apps } = storeToRefs(appsStore)
-const { currentUser } = storeToRefs(authStore)
 
 const currentAppId = computed(() => route.params.app_id)
 const currentApp = computed(() => apps.value.find(app => (app.id ?? app.app_id) === currentAppId.value))
@@ -77,7 +76,6 @@ async function requestHeaders() {
     'Authorization': `Bearer ${localStorage.getItem('rag_token') || ''}`,
     'X-App-Id': currentApp.value?.app_id,
   }
-  if (currentUser.value?.org_id) headers['X-Org-Id'] = currentUser.value.org_id
   return headers
 }
 

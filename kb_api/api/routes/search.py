@@ -6,8 +6,8 @@ from fastapi.responses import JSONResponse
 from kb_api.api.schemas import SearchRequest
 from kb_api.api.auth import resolve_principal
 from kb_api.api.permissions import WORKSPACE_SEARCH, has_workspace_permission
-from kb_api.rag_retriever.schemas import SearchRequest as RetrieverSearchRequest
-from kb_api.rag_retriever.service import RetrieverRequestError
+from kb_api.rag_search.schemas import SearchRequest as RagSearchRequest
+from kb_api.rag_search.service import SearchRequestError
 from kb_api.api.rate_limit import require_rate_limit
 
 router = APIRouter(tags=["search"], dependencies=[Depends(require_rate_limit)])
@@ -48,8 +48,8 @@ def _search(request: Request, body: SearchRequest, *, app_id: str | None = None,
         "workspace_ids": workspace_ids,
     }
     try:
-        return request.app.state.retriever.search(RetrieverSearchRequest.model_validate(payload))
-    except RetrieverRequestError as exc:
+        return request.app.state.search_service.search(RagSearchRequest.model_validate(payload))
+    except SearchRequestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
@@ -61,12 +61,12 @@ def search(body: SearchRequest, request: Request):
 @router.get("/api/v1/rag/config")
 def search_config(request: Request):
     resolve_principal(request)
-    retriever = request.app.state.retriever
-    config = retriever.search_config
+    search_service = request.app.state.search_service
+    config = search_service.search_config
     return {
         "mode": config.mode,
         "top_k": config.top_k,
-        "rerank": config.rerank and retriever.inference.rerank is not None,
+        "rerank": config.rerank and search_service.inference.rerank is not None,
         "fetch_k": config.fetch_k,
-        "capabilities": {"sparse_vector": retriever.vector.supports_sparse_vector()},
+        "capabilities": {"sparse_vector": search_service.vector.supports_sparse_vector()},
     }

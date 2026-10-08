@@ -25,6 +25,6 @@
 
 ### Task 3: Verification
 
-- Run KB API, Retriever and shared configuration tests with the KB environment.
+- Run KB API, Search and shared configuration tests with the KB environment.
 - Run Indexer, Parser and Indexer Inference unit tests with the Indexer environment.
 - Rebuild both containers and verify health, shared config, remote TEI and MQ consumption.

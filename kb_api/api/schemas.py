@@ -52,7 +52,7 @@ class SearchRequest(SearchOptions):
 
 
 class AppCreate(StrictModel):
-    app_id: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_]*$")
+    app_id: str = Field(min_length=2, max_length=40, pattern=r"^[A-Za-z][A-Za-z0-9_]*$")
     name: str = Field(min_length=1, max_length=200)
 
 

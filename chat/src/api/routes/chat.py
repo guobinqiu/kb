@@ -13,12 +13,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import Field
 
 from chat.src.agent.registry import get_graph
-from chat.src.api.auth import (
-    get_current_credential,
-    require_api_key,
-    reset_current_authorization,
-    set_current_authorization,
-)
+from chat.src.api import auth
 from chat.src.api.middleware import limiter
 from chat.src.api.requests import AgentRequest
 from chat.src.config import settings
@@ -52,7 +47,7 @@ def _sse(payload: dict) -> str:
 # ───────────────────── /api/v1/llm/chat/stream ─────────────────────
 
 
-@router.post("/api/v1/llm/chat/stream", dependencies=[Depends(require_api_key)])
+@router.post("/api/v1/llm/chat/stream", dependencies=[Depends(auth.require_user_principal)])
 @limiter.limit(settings.rate_limit_chat)
 async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_graph)):  # noqa: B008
     """SSE 流式。
@@ -61,10 +56,10 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
     """
     set_thread_id(req.thread_id)
 
-    credential = get_current_credential()
+    credential = auth.get_current_credential()
     scope = (
         f"{credential.app_id if credential else ''}:"
-        f"{request.headers.get('X-User-Id', '')}:"
+        f"{credential.user_id if credential else ''}:"
         f"{req.thread_id}"
     )
     thread_id = sha256(scope.encode()).hexdigest()
@@ -75,7 +70,7 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
     }
 
     async def event_generator() -> AsyncIterator[str]:
-        token = set_current_authorization(request.headers.get("Authorization"))
+        token = auth.set_current_authorization(request.headers.get("Authorization"))
         try:
             async for mode, payload in graph.astream(
                 input_data,
@@ -99,7 +94,7 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
                 "traceId": get_trace_id(),
             })
         finally:
-            reset_current_authorization(token)
+            auth.reset_current_authorization(token)
 
     return StreamingResponse(
         event_generator(),

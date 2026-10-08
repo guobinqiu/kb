@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from kb_api.rag_indexer.common.config import AppConfig
 from kb_api.rag_indexer.clients.vector.milvus import MilvusVectorClient
+from kb_api.rag_indexer.clients.vector.postgres import PostgresVectorClient
 from kb_api.rag_indexer.clients.vector.qdrant import QdrantVectorClient
 from kb_api.rag_indexer.core.loader import load_app_config
 from kb_api.rag_indexer.parser.config_loader import load_parser_config
@@ -12,15 +13,20 @@ from kb_api.rag_indexer.parser.client import LocalParserClient
 from kb_api.rag_indexer.parser.service import ParserService
 from kb_api.rag_indexer.inference.service import load_inference_components
 from kb_api.rag_indexer.rabbitmq import RabbitIndexWorker
+from kb_api.logging_config import configure_logging
 
 
 logger = logging.getLogger("rag_indexer")
 
 
 def main() -> None:
+    configure_logging()
     rabbitmq_url = os.getenv("RABBITMQ_URL", "").strip()
     if not rabbitmq_url:
         raise ValueError("RABBITMQ_URL is required")
+    service_api_key = os.getenv("SERVICE_API_KEY", "").strip()
+    if not service_api_key:
+        raise ValueError("SERVICE_API_KEY is required")
     config = load_app_config()
     state = _build_state(config)
     try:
@@ -30,6 +36,7 @@ def main() -> None:
             task_queue=os.getenv("INDEX_TASK_QUEUE", "kb.index.tasks"),
             callback_url=config.indexer.callback.url,
             callback_timeout=config.indexer.callback.timeout,
+            service_api_key=service_api_key,
         )
 
         def stop(_signum, _frame):
@@ -90,6 +97,19 @@ def _build_state(config: AppConfig):
             token=config.services.vector.token,
             retry=config.services.vector.retry,
         )
+    elif vector_backend == "postgres":
+        vector = PostgresVectorClient(
+            dense=inference.dense,
+            bm25=config.services.vector.bm25,
+            database_url=config.services.vector.database_url,
+            timeout=config.services.vector.timeout,
+            query_timeout=config.services.vector.query_timeout,
+            write_timeout=config.services.vector.write_timeout,
+            init_timeout=config.services.vector.init_timeout,
+            drop_timeout=config.services.vector.drop_timeout,
+            retry=config.services.vector.retry,
+        )
+        vector.start()
     else:
         raise ValueError(f"unsupported vector: {config.services.vector.provider}")
 

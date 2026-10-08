@@ -28,6 +28,7 @@ def load_api_limits(path: str | Path | None = None) -> ApiLimits:
 class Settings:
     database_url: str = "postgresql://rag:rag@postgres:5432/rag"
     token_secret: str = "change-me"
+    service_api_key: str = "change-me"
     token_ttl_seconds: int = 86400
     admin_name: str = "admin"
     admin_password: str = "admin"
@@ -44,6 +45,7 @@ class Settings:
         return cls(
             database_url=os.getenv("KB_DATABASE_URL", cls.database_url),
             token_secret=os.getenv("KB_TOKEN_SECRET", cls.token_secret),
+            service_api_key=os.getenv("SERVICE_API_KEY", cls.service_api_key),
             token_ttl_seconds=int(os.getenv("KB_TOKEN_TTL_SECONDS", str(cls.token_ttl_seconds))),
             admin_name=os.getenv("KB_ADMIN_NAME", cls.admin_name),
             admin_password=os.getenv("KB_ADMIN_PASSWORD", cls.admin_password),

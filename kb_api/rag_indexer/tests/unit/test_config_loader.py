@@ -59,6 +59,28 @@ def test_vector_bm25_switch_is_loaded(tmp_path, backend):
     assert load_config_file(path).services.vector.bm25 is False
 
 
+def test_load_config_file_reads_postgres_vector_config(tmp_path):
+    raw = _base_config()
+    raw["vector_db"] = {"postgres": {
+        "enable": True,
+        "database_url": "postgresql://rag:rag@postgres:5432/rag",
+        "bm25": True,
+        "query_timeout": 9,
+        "write_timeout": 30,
+    }}
+    path = tmp_path / "postgres.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    config = load_config_file(path).services.vector
+
+    assert config.provider == "postgres"
+    assert config.database_url == "postgresql://rag:rag@postgres:5432/rag"
+    assert config.base_url is None
+    assert config.bm25 is True
+    assert config.query_timeout == 9
+    assert config.write_timeout == 30
+
+
 def test_load_config_file_reads_service_bound_milvus_config(tmp_path):
 
     path = tmp_path / "milvus.yaml"

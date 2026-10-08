@@ -10,9 +10,9 @@ flowchart LR
 
     subgraph KBProcess["KB API 进程"]
         Routes["身份、组织、工作区、文件 API"]
-        Retriever["RAG Retriever"]
+        Search["RAG Search"]
         DAO["DAO"]
-        Routes --> Retriever
+        Routes --> Search
         Routes --> DAO
     end
 
@@ -37,14 +37,14 @@ flowchart LR
     Routes --> MinIO[(MinIO)]
     WebUI --> MinIO
     DAO --> RDB[(PostgreSQL)]
-    Retriever --> VDB[(Qdrant)]
-    Retriever --> QueryInference["查询 Inference 模块"] --> TEI["TEI / 云推理"]
+    Search --> VDB[(ParadeDB / 可选 VDB)]
+    Search --> QueryInference["查询 Inference 模块"] --> TEI["TEI / 云推理"]
     Parser --> MinerU["MinerU API Server"]
     DocumentInference --> TEI
     Consumer --> VDB
 ```
 
-组件框表示代码职责，不代表各自拥有容器。Retriever 与查询 Inference 在 KB API 进程内；Parser、分片和文档 Inference 在 Indexer 进程内。
+组件框表示代码职责，不代表各自拥有容器。Search 与查询 Inference 在 KB API 进程内；Parser、分片和文档 Inference 在 Indexer 进程内。
 
 ## 部署图
 
@@ -53,7 +53,7 @@ flowchart LR
     Browser["浏览器中的 WebUI"]
 
     subgraph Host["部署主机：Docker Compose"]
-        Dist["webui/dist"] -->|只读挂载| Nginx["nginx :5175"]
+        WebUI["webui 静态服务 :5175"]
 
         subgraph Network["共享网络 kb-net"]
             KB["kb_api :6100"]
@@ -62,7 +62,6 @@ flowchart LR
             Postgres[(postgres)]
             RabbitMQ[(rabbitmq)]
             MinIO[(minio)]
-            Qdrant[(qdrant)]
             TEI["tei_dense / tei_rerank"]
             MinerU["mineru-api-server"]
             VLM["mineru-vlm-server"]
@@ -75,10 +74,10 @@ flowchart LR
 
     OpenRouter["OpenRouter API"]
 
-    Browser --> Nginx
+    Browser --> WebUI
     Browser --> MinIO
-    Nginx --> KB
-    Nginx --> Chat
+    WebUI --> KB
+    WebUI --> Chat
     Chat --> KB
     Chat --> OpenRouter
     KB --> Postgres
@@ -86,8 +85,8 @@ flowchart LR
     Indexer --> KB
     KB --> MinIO
     Indexer --> MinIO
-    KB --> Qdrant
-    Indexer --> Qdrant
+    KB --> Postgres
+    Indexer --> Postgres
     KB --> TEI
     Indexer --> TEI
     Indexer --> MinerU --> VLM
@@ -95,10 +94,9 @@ flowchart LR
     Postgres --> Data
     RabbitMQ --> Data
     MinIO --> Data
-    Qdrant --> Data
 ```
 
-`nginx` 挂载 WebUI 构建产物；KB API、Indexer、Chat 和基础服务分别由独立 Compose 项目启动，共用外部网络 `kb-net`。图中是当前使用 Qdrant、本地 MinerU/TEI 和 OpenRouter 的部署；Milvus、etcd 不在默认启动范围内。
+`webui` 是独立镜像，构建阶段生成静态资源，运行阶段由镜像内的 Nginx 托管并透明代理 KB API 与 Chat。KB API、Indexer、Chat 和基础服务分别由独立 Compose 项目启动，共用外部网络 `kb-net`。图中是当前使用 ParadeDB/PostgreSQL、本地 MinerU/TEI 和 OpenRouter 的部署；Qdrant、Milvus、etcd 不在默认启动范围内。
 
 ## 身份与数据范围
 
@@ -112,7 +110,7 @@ App（企业）
     └── workspace_org.org_id  → orgs.id（部门授权，运行时匹配直属用户）
 ```
 
-每个 App 有一棵独立组织树和多个 workspace。界面从当前 App 根组织向下展示完整树，但看到组织不等于能管理它。平台 `owner` 不挂组织；企业 `admin` 和 `member` 通过 `users.org_id` 归属组织。用户登录名使用 `name`。Nginx 完成认证后向内部服务传递 `X-Org-Id`。
+每个 App 有一棵独立组织树和多个 workspace。界面从当前 App 根组织向下展示完整树，但看到组织不等于能管理它。平台 `owner` 不挂组织；企业 `admin` 和 `member` 通过 `users.org_id` 归属组织。用户登录名使用 `name`。KB API 与 Chat 使用同一个签名密钥各自验证用户 Token，不信任客户端提交的身份 Header。
 
 ### 企业身份
 
@@ -194,18 +192,18 @@ sequenceDiagram
     participant Chat
     participant LLM
     participant KBAPI as KB API
-    participant Retriever as RAG Retriever
+    participant Search as RAG Search
     participant Inference
     participant VDB
 
     WebUI->>Chat: 发送问题
     Chat->>KBAPI: 请求知识检索
-    KBAPI->>Retriever: 执行 RAG 检索
-    Retriever->>Inference: 查询向量化
-    Inference-->>Retriever: 返回查询向量
-    Retriever->>VDB: 向量召回
-    VDB-->>Retriever: 返回候选文档片段
-    Retriever-->>KBAPI: 返回检索结果
+    KBAPI->>Search: 执行 RAG 检索
+    Search->>Inference: 查询向量化
+    Inference-->>Search: 返回查询向量
+    Search->>VDB: 向量召回
+    VDB-->>Search: 返回候选文档片段
+    Search-->>KBAPI: 返回检索结果
     KBAPI-->>Chat: 返回知识上下文
     Chat->>LLM: 携带上下文生成回答
     LLM-->>Chat: 返回回答

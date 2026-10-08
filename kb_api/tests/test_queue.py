@@ -23,7 +23,7 @@ def test_index_result_api_applies_success(system):
     response = system["client"].post(
         "/api/v1/index-results",
         json={"operation": "index", "file_id": record["id"], "status": "indexed", "indexed_at": "2026-09-22T12:00:00+00:00", "error": None},
-        headers=system["headers"],
+        headers=system["service_headers"],
     )
     assert response.status_code == 204, response.text
     stored = system["dao"].get_file(record["id"])
@@ -38,7 +38,7 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
     response = system["client"].post(
         "/api/v1/index-results",
         json={"operation": "index", "file_id": record["id"], "status": "failed", "error": error, "indexed_at": None},
-        headers=system["headers"],
+        headers=system["service_headers"],
     )
     assert response.status_code == 204, response.text
     failed = system["dao"].get_file(record["id"])
@@ -50,12 +50,23 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
     response = system["client"].post(
         "/api/v1/index-results",
         json={"operation": "delete", "file_id": record["id"], "status": "deleted", "error": None, "indexed_at": None},
-        headers=system["headers"],
+        headers=system["service_headers"],
     )
     assert response.status_code == 204, response.text
     deleted = system["dao"].get_file(record["id"], include_deleted=True)
     assert deleted["deleted_at"] is not None
     assert record["s3_url"] in system["storage"].deleted
+
+
+def test_index_result_api_rejects_user_token(system):
+    record = _upload(system)
+    response = system["client"].post(
+        "/api/v1/index-results",
+        json={"operation": "index", "file_id": record["id"], "status": "indexed"},
+        headers=system["headers"],
+    )
+
+    assert response.status_code == 401
 
 
 def test_publish_declares_durable_queue_and_sends_persistent_json(monkeypatch):

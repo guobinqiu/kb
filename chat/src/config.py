@@ -23,6 +23,7 @@ def _load_settings() -> dict:
     values["rag_rerank"] = rag.get("rerank", False)
     values["rag_query_rewrite"] = rag.get("query_rewrite", True)
     values["openai_api_key"] = os.getenv("OPENAI_API_KEY")
+    values["token_secret"] = os.getenv("KB_TOKEN_SECRET")
     values["database_url"] = os.getenv("DATABASE_URL") or values.get("database_url")
     return values
 
@@ -30,6 +31,7 @@ def _load_settings() -> dict:
 class Settings(BaseSettings):
     # ─── LLM（OpenAI 兼容端点：OpenRouter / 本地 vLLM） ───────────────────
     openai_api_key: str
+    token_secret: str
     openai_base_url: str
     model_name: str = "openai/gpt-4o-mini"
     llm_kwargs: str = ""

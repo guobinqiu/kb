@@ -73,7 +73,7 @@ def make_client():
     dao = FakeDAO()
     vector = FakeChunkVector()
     app.state.dao = dao
-    app.state.retriever = SimpleNamespace(vector=vector)
+    app.state.search_service = SimpleNamespace(vector=vector)
     app.dependency_overrides[current_user] = lambda: {"id": "user-1", "role": "member"}
     return TestClient(app), dao, vector
 

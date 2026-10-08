@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from kb_api.api.auth import hash_password
-from kb_api.rag_retriever.common.config import SearchConfig
-from kb_api.rag_retriever.service import Retriever
+from kb_api.rag_search.common.config import SearchConfig
+from kb_api.rag_search.service import SearchService
 
 
 def test_search_accepts_multiple_workspace_ids(system):
@@ -25,7 +25,7 @@ def test_search_accepts_multiple_workspace_ids(system):
         json={"query": "policy", "workspace_ids": [second["id"], first["id"]], "file_ids": ["file-1"]},
     )
     assert response.status_code == 200
-    request = system["retriever"].requests[-1]["json"]
+    request = system["search_service"].requests[-1]["json"]
     assert request["app_id"] == app["app_id"]
     assert request["workspace_ids"] == sorted([first["id"], second["id"]])
     assert request["file_ids"] == ["file-1"]
@@ -46,7 +46,7 @@ def test_search_rejects_workspace_outside_membership(system):
         json={"query": "policy", "workspace_ids": [workspace["id"]]},
     )
     assert response.status_code == 403
-    assert not system["retriever"].requests
+    assert not system["search_service"].requests
 
 
 def test_legacy_workspace_search_path_is_not_exposed(system):
@@ -55,10 +55,10 @@ def test_legacy_workspace_search_path_is_not_exposed(system):
     ).status_code == 404
 
 
-def test_search_config_reports_active_retriever_capabilities(system):
-    system["retriever"].search_config = SimpleNamespace(mode="hybrid", top_k=5, rerank=True, fetch_k=20)
-    system["retriever"].vector = SimpleNamespace(supports_sparse_vector=lambda: True)
-    system["retriever"].inference = SimpleNamespace(rerank=object())
+def test_search_config_reports_active_search_capabilities(system):
+    system["search_service"].search_config = SimpleNamespace(mode="hybrid", top_k=5, rerank=True, fetch_k=20)
+    system["search_service"].vector = SimpleNamespace(supports_sparse_vector=lambda: True)
+    system["search_service"].inference = SimpleNamespace(rerank=object())
 
     response = system["client"].get("/api/v1/rag/config", headers=system["headers"])
 
@@ -77,7 +77,7 @@ def test_sparse_search_without_sparse_support_returns_bad_request(system):
     app, _ = dao.create_app("Acme", "acme")
     workspace = dao.create_workspace(app["id"], "Policies", creator_id=system["admin"]["id"])
     application = system["client"].app
-    application.state.retriever = Retriever(
+    application.state.search_service = SearchService(
         SearchConfig(),
         vector=SimpleNamespace(supports_sparse_vector=lambda: False),
         inference=SimpleNamespace(rerank=None),

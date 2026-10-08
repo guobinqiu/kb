@@ -16,8 +16,6 @@ export const useAuthStore = defineStore('auth', () => {
   function applyAuthHeader() {
     if (authToken.value) axios.defaults.headers.common.Authorization = `Bearer ${authToken.value}`
     else delete axios.defaults.headers.common.Authorization
-    if (currentUser.value?.org_id) axios.defaults.headers.common['X-Org-Id'] = currentUser.value.org_id
-    else delete axios.defaults.headers.common['X-Org-Id']
   }
 
   function clearAuth() {
@@ -25,7 +23,6 @@ export const useAuthStore = defineStore('auth', () => {
     currentUser.value = null
     localStorage.removeItem('rag_token')
     delete axios.defaults.headers.common.Authorization
-    delete axios.defaults.headers.common['X-Org-Id']
   }
 
   async function fetchCurrentUser() {

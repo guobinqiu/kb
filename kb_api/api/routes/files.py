@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from kb_api.api.auth import current_user
+from kb_api.api.auth import current_user, require_service_principal
 from kb_api.api.schemas import FileUploadWorkspaceComplete, FileUploadWorkspaceRequest
 from kb_api.api.permissions import (
     WORKSPACE_FILES_DELETE,
@@ -216,7 +216,11 @@ def apply_index_result(dao, storage, message: dict) -> None:
         storage.delete(existing["s3_url"])
 
 
-@router.post("/index-results", status_code=204)
+@router.post(
+    "/index-results",
+    status_code=204,
+    dependencies=[Depends(require_service_principal)],
+)
 def update_index_result(body: dict, request: Request):
     apply_index_result(request.app.state.dao, request.app.state.storage, body)
     return Response(status_code=204)

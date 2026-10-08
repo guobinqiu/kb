@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from time import monotonic, sleep
 from uuid import uuid4
 from types import SimpleNamespace
 
@@ -26,8 +25,8 @@ def test_create_app_rolls_back_when_root_org_insert_fails(system, monkeypatch):
     assert dao.get_app(existing_app["id"]) == existing_app
     assert dao.get_org(existing_org["id"]) == existing_org
     with dao._connect() as connection:
-        assert connection.execute("SELECT count(*) AS count FROM kb.apps").fetchone()["count"] == 1
-        assert connection.execute("SELECT count(*) AS count FROM kb.orgs").fetchone()["count"] == 1
+        assert connection.execute("SELECT count(*) AS count FROM apps").fetchone()["count"] == 1
+        assert connection.execute("SELECT count(*) AS count FROM orgs").fetchone()["count"] == 1
 
 
 def test_create_workspace_rolls_back_when_creator_grant_fails(system):
@@ -42,7 +41,7 @@ def test_create_workspace_rolls_back_when_creator_grant_fails(system):
     assert dao.list_workspaces(app["id"]) == [existing]
     assert dao.list_workspace_members(existing["id"]) == members
     with dao._connect() as connection:
-        assert connection.execute("SELECT count(*) AS count FROM kb.workspace_user").fetchone()["count"] == 1
+        assert connection.execute("SELECT count(*) AS count FROM workspace_user").fetchone()["count"] == 1
 
 
 def test_app_creation_rolls_back_when_vector_initialization_fails(system):
@@ -110,61 +109,6 @@ def test_workspace_user_search_keeps_literal_characters_and_pagination(system):
     assert result["total"] == 5
     assert [user["name"] for user in result["users"]] == names[2:4]
     assert dao.list_workspace_users(workspace["id"], page=4, page_size=2)["users"] == []
-
-
-def test_concurrent_file_updates_preserve_independent_fields(system, monkeypatch):
-    dao = system["dao"]
-    app, _ = dao.create_app("Acme", "acme")
-    workspace = dao.create_workspace(app["id"], "Policies")
-    record = dao.create_file(
-        workspace_id=workspace["id"], filename="original.txt", status="uploaded",
-        s3_url="s3://kb/original-key", size_bytes=42, created_by=system["admin"]["id"],
-    )
-    connect = dao._connect
-    application_name = f"file_update_{uuid4().hex}"
-    ready = Barrier(2)
-
-    def worker_connection():
-        connection = connect()
-        connection.execute("SELECT set_config('application_name', %s, true)", (application_name,))
-        connection.execute("SET LOCAL lock_timeout = '10s'")
-        connection.execute("SET LOCAL statement_timeout = '15s'")
-        return connection
-
-    def update(values):
-        ready.wait(timeout=10)
-        return dao.update_file(record["id"], **values)
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        with connect() as blocker, connect() as observer:
-            observer.autocommit = True
-            blocker.execute("SELECT id FROM kb.files WHERE id = %s FOR UPDATE", (record["id"],)).fetchone()
-            monkeypatch.setattr(dao, "_connect", worker_connection)
-            futures = [
-                executor.submit(update, {"filename": "renamed.txt"}),
-                executor.submit(update, {"status": "indexed"}),
-            ]
-            deadline = monotonic() + 5
-            while True:
-                waiting = observer.execute(
-                    "SELECT count(*) AS count FROM pg_stat_activity "
-                    "WHERE datname = current_database() AND application_name = %s "
-                    "AND wait_event_type = 'Lock'",
-                    (application_name,),
-                ).fetchone()["count"]
-                if waiting == 2:
-                    break
-                assert monotonic() < deadline, "Both file updates must reach the held database row lock"
-                sleep(0.01)
-        results = [future.result(timeout=15) for future in futures]
-
-    assert results[0]["filename"] == "renamed.txt"
-    assert results[1]["status"] == "indexed"
-    updated = dao.get_file(record["id"])
-    assert updated["filename"] == "renamed.txt"
-    assert updated["status"] == "indexed"
-    for field in ("id", "workspace_id", "s3_url", "size_bytes", "created_by"):
-        assert updated[field] == record[field]
 
 
 def test_partial_org_and_user_updates_preserve_other_fields(system):

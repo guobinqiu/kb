@@ -3,11 +3,16 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 from chat.src.agent.registry import get_checkpointer, get_graph
+from chat.src.api.auth import require_user_principal
 from chat.src.api.middleware import limiter
 from chat.src.api.requests import ThreadId
 from chat.src.config import settings
 
-router = APIRouter(prefix="/threads", tags=["threads"])
+router = APIRouter(
+    prefix="/threads",
+    tags=["threads"],
+    dependencies=[Depends(require_user_principal)],
+)
 
 
 class ThreadSummary(BaseModel):

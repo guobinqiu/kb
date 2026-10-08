@@ -17,7 +17,6 @@ dependencies = [
     "slowapi",
     "httpx",
     "pyyaml",
-    "PyJWT",
     "pypinyin>=0.50.0",
 ]
 

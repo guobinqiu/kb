@@ -137,7 +137,7 @@
     "namePlaceholder": "输入企业名称",
     "nameRule": "请输入企业名称",
     "appIdPlaceholder": "输入应用 ID，如 imsdom",
-    "appIdRule": "应用 ID 须以字母开头，仅含字母、数字或下划线，长度 2-64",
+    "appIdRule": "应用 ID 须以字母开头，仅含字母、数字或下划线，长度 2-40",
     "create": "新建企业",
     "created": "{name} 已创建",
     "deleted": "{name} 已停用",

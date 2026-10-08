@@ -2,7 +2,7 @@
 
 部署主机：`imsdom@19.16.1.233`。项目目录：`/home/imsdom/workspace/kb`。
 
-本指南使用 Docker Compose、本机构建应用镜像，默认向量库为 Qdrant。MinerU 和 TEI 复用 233 上已经运行的服务；Chat 当前使用 OpenRouter。
+本指南使用 Docker Compose、本机构建应用镜像。关系数据库使用兼容 PostgreSQL 的 ParadeDB 镜像，并同时作为默认向量后端。MinerU 和 TEI 复用 233 上已经运行的服务；Chat 当前使用 OpenRouter。
 
 ## 1. 检查环境
 
@@ -104,6 +104,7 @@ nano deploy/.env
 | `KB_ADMIN_NAME` | `admin` |
 | `KB_ADMIN_PASSWORD` | 设置管理员登录密码，不保留 `change-me` |
 | `KB_TOKEN_SECRET` | 填入随机值，可用 `openssl rand -hex 32` 生成 |
+| `SERVICE_API_KEY` | 填入另一份随机值，供 Indexer 回写 KB API 使用 |
 | `RABBITMQ_USER` | `kb` |
 | `RABBITMQ_PASSWORD` | 设置队列密码，可用 `openssl rand -hex 24` 生成 |
 | `RABBITMQ_URL` | `amqp://kb:队列密码@rabbitmq:5672/%2F`，密码与上一项一致 |
@@ -138,13 +139,14 @@ nano deploy/.env
 | `inference.tei.rerank.bge_m3.base_url` | `http://19.16.1.233:8082` |
 | `inference.tei.rerank.bge_m3.model_name` | `BAAI/bge-reranker-v2-m3` |
 | `inference.siliconflow-cn.enable`、`inference.siliconflow-intl.enable` | `false` |
-| `vector_db.qdrant.enable` | `true` |
+| `vector_db.postgres.enable` | `true` |
+| `vector_db.qdrant.enable` | `false` |
 | `vector_db.qdrant.base_url` | `http://qdrant:6333` |
 | `vector_db.milvus.enable`、`vector_db.qdrant_cloud.enable`、`vector_db.milvus_cloud.enable` | `false` |
 | `storage.endpoint_url` | `http://minio:9000` |
 | `storage.bucket` | `kb-files` |
 
-KB API 和 Indexer 共用这个文件。PDF 使用配置的 `standard`，Office 新旧格式固定使用 Flash，TXT 和 Markdown 使用现有文本解析。
+KB API 和 Indexer 共用这个文件。所有 `vector_db` 后端中必须且只能启用一个。默认启用 PostgreSQL 向量后端，并使用 `database_url: postgresql://rag:rag@postgres:5432/rag`；其 `query_timeout`、`write_timeout`、`init_timeout`、`drop_timeout` 和 `retry` 分别控制数据库操作时限与重试。PDF 使用配置的 `standard`，Office 新旧格式固定使用 Flash，TXT 和 Markdown 使用现有文本解析。
 
 编辑 `chat/config/chat.yaml`，核对：
 
@@ -173,7 +175,7 @@ rag:
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-新项目默认使用容器名 `postgres`、`qdrant`、`minio`、`rabbitmq`、`jaeger`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`nginx`。同名旧容器需先处理。可选的 Milvus 使用 `etcd` 和 `milvus`。
+新项目默认使用容器名 `postgres`、`minio`、`rabbitmq`、`jaeger`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`webui`。其中 `postgres` 容器运行 ParadeDB，同时保存关系数据、向量和 BM25 索引。可选 Qdrant 使用 `qdrant`，可选 Milvus 使用 `etcd` 和 `milvus`。同名旧容器需先处理。
 
 本次 233 有一个已停止的旧 `minio` 容器，实际处理命令为：
 
@@ -183,7 +185,7 @@ docker rename minio minio-legacy-stopped
 
 仅在存在该旧容器时执行。此命令保留旧容器和数据，不应对正在使用的 KB MinIO 执行。
 
-基础服务需要端口 `5432`、`5672`、`15672`、`6333`、`6334`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
+基础服务需要端口 `5432`、`5672`、`15672`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。选择 Qdrant 时还需要 `6333`、`6334`。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
 
 ## 7. 启动基础服务
 
@@ -194,7 +196,7 @@ just infra up
 docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml ps -a
 ```
 
-默认启动 PostgreSQL、Qdrant、MinIO、RabbitMQ、Collector 和 Jaeger。
+默认启动 ParadeDB/PostgreSQL、MinIO、RabbitMQ、Collector 和 Jaeger。
 
 如果 RabbitMQ 拉取中断或长时间没有进展，本次 233 已验证以下方式可用：
 
@@ -220,7 +222,7 @@ done
 
 ```bash
 docker exec -i postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
-docker exec postgres psql -U rag -d rag -c '\dt kb.*'
+docker exec postgres psql -U rag -d rag -c '\dt'
 ```
 
 应看到 `apps`、`orgs`、`users`、`workspaces`、`workspace_user`、`workspace_org`、`files`。`db.sql` 同时准备 `rag_test` 数据库，正式运行不需要执行测试库建表脚本。
@@ -232,24 +234,23 @@ cd ~/workspace/kb
 just kb up
 just indexer up
 just chat up
-npm --prefix webui ci
 just webui up
 ```
 
-前三条命令自动构建并重新创建对应容器。`just webui up` 自动打包前端并启动 Nginx。不需要镜像仓库、push、Swarm 或 rollout。
+四条命令都自动构建并重新创建对应容器。`just webui up` 构建独立 WebUI 镜像；镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat，认证由后端服务处理。
 
 ## 10. 检查运行状态
 
 ```bash
 docker ps --filter network=kb-net --format 'table {{.Names}}\t{{.Status}}'
-curl -f http://127.0.0.1:5175/health
+curl -f http://127.0.0.1:5175/
 curl -f http://127.0.0.1:9000/minio/health/live
 docker exec kb_api /app/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:6100/health').read().decode())"
 docker exec rag_indexer /app/.venv/bin/python -c "import os; os.kill(1, 0)"
 docker exec rabbitmq rabbitmqctl list_queues name consumers messages_ready messages_unacknowledged
 ```
 
-`kb_api`、`rag_indexer`、`postgres`、`rabbitmq` 应为 `healthy`，其余长期服务应为 `Up`。Indexer 通过 `python -m kb_api.rag_indexer.app.main` 启动，不监听 HTTP 端口；其健康检查仅表示 PID 1 存活。网关 `/health` 检查 KB API，旧 `/ready` 已移除。队列 `kb.index.tasks` 的 `consumers` 应为 `1`；空闲时两项消息数量均为 `0`。
+`kb_api`、`rag_indexer`、`postgres`、`rabbitmq` 应为 `healthy`，其余长期服务应为 `Up`。Indexer 通过 `python -m kb_api.rag_indexer.app.main` 启动。队列 `kb.index.tasks` 的 `consumers` 应为 `1`；空闲时两项消息数量均为 `0`。
 
 在浏览器打开：
 

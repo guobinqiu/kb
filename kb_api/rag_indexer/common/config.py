@@ -23,6 +23,7 @@ class VectorServiceConfig:
     provider: str
     bm25: bool = False
     base_url: str | None = None
+    database_url: str | None = None
     timeout: int = 30
     query_timeout: int = 10
     write_timeout: int = 60
@@ -130,13 +131,17 @@ def _parse_service_clients_config(raw: dict[str, Any]) -> ServiceClientsConfig:
 
 def _parse_vector_service_config(raw: dict[str, Any]) -> VectorServiceConfig:
     provider = str(_required(raw, "provider", "services.vector"))
-    _validate_supported("services.vector.provider", provider, {"qdrant", "milvus", "qdrant_cloud", "milvus_cloud"})
-    _required(raw, "base_url", "services.vector")
+    _validate_supported("services.vector.provider", provider, {"qdrant", "milvus", "qdrant_cloud", "milvus_cloud", "postgres"})
+    if provider == "postgres":
+        _required(raw, "database_url", "services.vector")
+    else:
+        _required(raw, "base_url", "services.vector")
     timeout = int(raw.get("timeout", 30))
     return VectorServiceConfig(
         provider=provider.removesuffix("_cloud"),
-        bm25=_bool(raw.get("bm25", provider.startswith("milvus"))),
+        bm25=_bool(raw.get("bm25", provider.startswith("milvus") or provider == "postgres")),
         base_url=raw.get("base_url"),
+        database_url=raw.get("database_url"),
         timeout=timeout,
         query_timeout=int(raw.get("query_timeout", timeout)),
         write_timeout=int(raw.get("write_timeout", timeout)),

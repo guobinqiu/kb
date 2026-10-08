@@ -4,23 +4,23 @@
 
 检索路径为 `/api/v1/rag/search` 和 `/api/v1/rag/config`，对话路径为 `/api/v1/llm/*`，文件与分片管理使用 KB API 的 `/api/v1/workspaces/*`。旧 `/api/rag/*` 及其他 Indexer HTTP 路径已移除。
 
-## 健康检查与网关
+## 健康检查
 
-网关 `http://localhost:5175/health` 转发到 KB API 的 `GET /health`，无需业务鉴权。旧 `/ready` 已移除。RAG Indexer 不监听 HTTP 端口，其容器健康检查仅确认 PID 1 存活，MQ 消费状态通过 RabbitMQ 的消费者数量检查。Chat 的 `/health` 仅供 Compose 内部访问。
+KB API 提供 `GET /health`，Chat 提供仅供 Compose 内部使用的 `/health`。RAG Indexer 的运行状态通过容器进程、RabbitMQ 消费者数量和队列积压检查。
 
-Parser、文档 Inference 和 Retriever 不提供独立 HTTP API。公开 `/api/v1/rag/search` 由 KB API 接收；KB API 根据工作区授权计算可检索的 `workspace_ids`，再传给进程内 Retriever。
+Parser、文档 Inference 和 Search 不提供独立 HTTP API。公开 `/api/v1/rag/search` 由 KB API 接收；KB API 根据工作区授权计算可检索的 `workspace_ids`，再传给进程内 Search。
 
 ## 鉴权
 
-外部系统调用业务接口时，每个请求都使用 KB API 生成的 Bearer API key。用户登录后使用 User JWT。Nginx 通过 KB API 统一校验检索与对话请求身份，并把可信身份传给 KB API 和 Chat；Indexer 仅从 MQ 消费任务，不接收 HTTP 鉴权请求。认证子请求返回的内部身份头包括 `X-App-Id`、`X-User-Id` 和 `X-Org-Id`；客户端不得用这些头声明身份。
+外部系统调用 KB API 时使用 App API Key；用户登录后使用签名 User Token。KB API 与 Chat 使用同一个 `KB_TOKEN_SECRET` 各自验签。Chat 将原始 `Authorization` 与用户选择的 `X-App-Id` 转发给 KB API 搜索接口，最终工作区权限由 KB API 校验。Indexer 从 MQ 消费任务，使用 `X-Service-Api-Key` 调用结果回写接口；该密钥来自 `SERVICE_API_KEY`。
 
 请求头：
 
 | Header | 说明 |
 |---|---|
-| `Authorization` | `Bearer <api_key>` |
+| `Authorization` | `Bearer <user_token>`，或 KB API 支持的 App API Key |
 
-管理台接口使用 User JWT：
+管理台接口使用签名 User Token：
 
 ```http
 Authorization: Bearer <access_token>
@@ -94,6 +94,8 @@ Content-Type: application/json
 
 `api_key` 保存在 PostgreSQL，外部业务系统用它调用 `/api/v1/rag/*` 和 `/api/v1/llm/*` 接口。创建 App 时建立该 App 唯一 org 树的根组织；平台 `owner` 不加入该组织。
 
+`app_id` 是 2-40 个字符、唯一且不可变的业务标识，必须以字母开头，后续只能包含字母、数字或下划线。
+
 ### 查询应用列表
 
 ```http
@@ -143,7 +145,7 @@ DELETE /api/v1/apps/{app_uuid}
 
 `GET /api/v1/rag/config` 返回检索默认值和可用的 sparse/rerank 能力，供搜索页面初始化控件。
 
-`POST /api/v1/workspaces/{workspace_id}/search` 只检索路径中的工作区，请求体不接受 `workspace_ids`。`POST /api/v1/rag/search` 可在请求体中传多个 `workspace_ids`，不传时检索当前身份有权访问的全部工作区。两者的其他查询字段和结果格式相同。
+`POST /api/v1/rag/search` 可在请求体中传多个 `workspace_ids`，不传时检索当前身份有权访问的全部工作区。
 
 ```http
 POST /api/v1/rag/search
@@ -254,7 +256,7 @@ Content-Type: application/json
 
 ## 文件上传
 
-WebUI 使用三步直传流程。请求均使用 User JWT 鉴权。
+WebUI 使用三步直传流程。请求均使用签名 User Token 鉴权。
 
 支持 `.pdf`、`.doc`、`.docx`、`.xls`、`.xlsx`、`.ppt`、`.pptx`、`.txt`、`.md`，后缀不区分大小写。申请上传地址和完成上传均会校验后缀；不支持的类型返回 HTTP 415，响应使用统一错误结构。该校验不验证文件内容是否与后缀一致。
 

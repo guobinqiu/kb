@@ -14,11 +14,15 @@ logger = logging.getLogger("rag_indexer")
 
 
 class RabbitIndexWorker:
-    def __init__(self, state, url: str, *, task_queue: str, callback_url: str, callback_timeout: float = 10.0):
+    def __init__(
+        self, state, url: str, *, task_queue: str, callback_url: str,
+        service_api_key: str, callback_timeout: float = 10.0,
+    ):
         self.state = state
         self.url = url
         self.task_queue = task_queue
         self.callback_url = callback_url
+        self.service_api_key = service_api_key
         self.callback_timeout = callback_timeout
         self._channel = None
         self._stopped = False
@@ -29,7 +33,11 @@ class RabbitIndexWorker:
 
     def post(self, value: dict) -> None:
         with httpx.Client(timeout=self.callback_timeout) as client:
-            response = client.post(self.callback_url, json=value)
+            response = client.post(
+                self.callback_url,
+                json=value,
+                headers={"X-Service-Api-Key": self.service_api_key},
+            )
             response.raise_for_status()
 
     def run(self) -> None:

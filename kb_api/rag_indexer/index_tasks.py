@@ -68,6 +68,7 @@ def process_index_task(state, task: IndexTask) -> dict:
             deleted_chunks = state.vector_client.delete_file_chunks(task.file_id)
             return _result(task, deleted_chunks=deleted_chunks)
 
+        state.vector_client.ensure_app_collection(task.app_id)
         chunk_count, file_size = index_presigned_file(
             state,
             file_id=task.file_id,

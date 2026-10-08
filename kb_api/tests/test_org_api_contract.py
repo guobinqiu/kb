@@ -35,6 +35,13 @@ def test_user_payload_uses_org_id_and_owner_has_no_org():
         })
 
 
+def test_app_id_accepts_40_characters_and_rejects_41():
+    assert AppCreate(app_id="a" * 40, name="App").app_id == "a" * 40
+
+    with pytest.raises(ValidationError):
+        AppCreate(app_id="a" * 41, name="App")
+
+
 def test_workspace_member_payload_uses_typed_subject_and_role():
     payload = {"type": "user", "id": "user-1", "role": "admin"}
     assert WorkspaceMemberCreate.model_validate(payload).model_dump() == payload
@@ -211,7 +218,7 @@ def test_owner_auth_context_uses_org_header_and_never_node_header(monkeypatch):
         dao=dao,
         storage=_NoopService(),
         queue=_NoopService(),
-        retriever=SimpleNamespace(),
+        search_service=SimpleNamespace(),
         token_secret="test-secret",
         initialize=False,
     )

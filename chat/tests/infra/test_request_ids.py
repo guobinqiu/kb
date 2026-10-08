@@ -1,6 +1,10 @@
 import ast
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -12,6 +16,20 @@ from chat.src.api.middleware import limiter
 from chat.src.api.middleware.trace_timeout import add_trace_id_and_timeout
 from chat.src.api.routes import chat
 from chat.src.infra import tracing
+
+
+def _user_token() -> str:
+    payload = {
+        "exp": int((datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp()),
+        "sub": "user-1",
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    ).rstrip(b"=").decode()
+    signature = base64.urlsafe_b64encode(
+        hmac.new(b"test-secret", encoded.encode(), hashlib.sha256).digest()
+    ).rstrip(b"=").decode()
+    return f"{encoded}.{signature}"
 
 
 def test_no_tracking_imports():
@@ -64,7 +82,11 @@ async def test_error_and_sse_request_ids(monkeypatch, traceparent):
         assert observed[0] == responses[0].headers["x-trace-id"]
         sse = await client.post("/api/v1/llm/chat/stream", json={
             "message": "question", "thread_id": "thread", "workspace_ids": ["ws"],
-        }, headers={**headers, "X-Principal-Type": "user", "X-App-Id": "app"})
+        }, headers={
+            **headers,
+            "Authorization": f"Bearer {_user_token()}",
+            "X-App-Id": "app",
+        })
         events = [json.loads(line[6:]) for line in sse.text.splitlines() if line.startswith("data: ")]
         assert events[-1]["type"] == "error"
         assert events[-1]["traceId"] == events[-1]["trace_id"] == sse.headers["x-trace-id"]

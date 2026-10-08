@@ -16,7 +16,7 @@ from kb_api.api.rate_limit import _requests
 from kb_api.api.dao import PostgresDAO
 
 
-RESET_SQL = "TRUNCATE kb.files, kb.workspace_org, kb.workspace_user, kb.workspaces, kb.users, kb.orgs, kb.apps RESTART IDENTITY CASCADE"
+RESET_SQL = "TRUNCATE files, workspace_org, workspace_user, workspaces, users, orgs, apps RESTART IDENTITY CASCADE"
 
 
 @dataclass
@@ -62,7 +62,7 @@ class FakeQueue:
 
 
 @dataclass
-class FakeRetriever:
+class FakeSearchService:
     requests: list[dict] = field(default_factory=list)
     response: dict = field(default_factory=lambda: {"results": []})
 
@@ -93,13 +93,14 @@ def system():
     )
     storage = FakeStorage()
     queue = FakeQueue()
-    retriever = FakeRetriever()
+    search_service = FakeSearchService()
     app = create_app(
         dao=dao,
         storage=storage,
         queue=queue,
-        retriever=retriever,
+        search_service=search_service,
         token_secret="test-secret",
+        service_api_key="test-service-key",
         initialize=False,
     )
     try:
@@ -115,9 +116,10 @@ def system():
                 "dao": dao,
                 "storage": storage,
                 "queue": queue,
-                "retriever": retriever,
+                "search_service": search_service,
                 "admin": admin,
                 "headers": {"Authorization": f"Bearer {token}"},
+                "service_headers": {"X-Service-Api-Key": "test-service-key"},
             }
     finally:
         with dao._connect() as connection:

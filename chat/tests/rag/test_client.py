@@ -74,7 +74,7 @@ async def test_client_sends_bearer_auth_without_fabricated_traceparent(install_m
 
 
 @pytest.mark.asyncio
-async def test_client_sends_trusted_identity_headers_without_api_key(install_mock_transport):
+async def test_client_does_not_fabricate_identity_headers_without_authorization(install_mock_transport):
     captured: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -94,7 +94,7 @@ async def test_client_sends_trusted_identity_headers_without_api_key(install_moc
 
     headers = captured[0].headers
     assert "Authorization" not in headers
-    assert headers["X-Principal-Type"] == "user"
+    assert "X-Principal-Type" not in headers
     assert headers["X-App-Id"] == "app-id"
     assert "X-Workspace-Id" not in headers
 

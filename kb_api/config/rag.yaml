@@ -117,8 +117,20 @@ inference:
         timeout: 30
 
 vector_db:
-  qdrant:
+  postgres:
     enable: true
+    bm25: true
+    database_url: postgresql://rag:rag@postgres:5432/rag
+    query_timeout: 10
+    write_timeout: 60
+    init_timeout: 120
+    drop_timeout: 180
+    retry:
+      max_attempts: 3
+      interval_seconds: 0.5
+
+  qdrant:
+    enable: false
     bm25: true
     base_url: http://qdrant:6333
     query_timeout: 10

@@ -32,7 +32,7 @@ packages = ["."]
 
 [tool.pytest.ini_options]
 pythonpath = [".."]
-testpaths = ["tests", "rag_retriever/tests", "rag_retriever/inference/tests"]
+testpaths = ["tests", "rag_search/tests", "rag_search/inference/tests"]
 markers = [
     "unit: unit tests",
     "integration: integration tests",

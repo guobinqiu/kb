@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 CONFIG_FILE_ENV = "KB_CONFIG_FILE"
-VECTOR_SERVICES = ("qdrant", "milvus", "qdrant_cloud", "milvus_cloud")
+VECTOR_SERVICES = ("qdrant", "milvus", "qdrant_cloud", "milvus_cloud", "postgres")
 
 
 def load_app_config() -> AppConfig:

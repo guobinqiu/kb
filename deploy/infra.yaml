@@ -42,7 +42,8 @@ services:
   postgres:
     container_name: postgres
     <<: *infra-service
-    image: postgres:16-alpine
+    image: paradedb/paradedb:0.25.10-pg16
+    command: ["postgres", "-c", "shared_preload_libraries=pg_search"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rag}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}

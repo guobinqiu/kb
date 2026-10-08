@@ -112,8 +112,8 @@ def test_search_uses_authorized_workspaces_not_organization_subtree(system):
 
     response = client.post("/api/v1/rag/search", json={"query": "policy"}, headers=headers)
     assert response.status_code == 200
-    assert system["retriever"].requests[-1]["json"]["workspace_ids"] == [first["id"]]
-    assert "org_ids" not in system["retriever"].requests[-1]["json"]
+    assert system["search_service"].requests[-1]["json"]["workspace_ids"] == [first["id"]]
+    assert "org_ids" not in system["search_service"].requests[-1]["json"]
     forbidden = client.post("/api/v1/rag/search", json={"query": "policy", "workspace_ids": [second["id"]]}, headers=headers)
     assert forbidden.status_code == 403
 

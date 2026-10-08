@@ -34,7 +34,7 @@ def list_chunks(
     if not allowed_file_ids:
         return {"chunks": [], "next_cursor": None, "has_more": False}
 
-    vector = getattr(request.app.state.retriever, "vector", None)
+    vector = getattr(request.app.state.search_service, "vector", None)
     if vector is None:
         raise HTTPException(status_code=503, detail="Vector database is unavailable")
     if not vector.app_collection_exists(app["app_id"]):

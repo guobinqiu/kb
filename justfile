@@ -23,7 +23,7 @@ mineru action:
 	just _mineru-{{action}}
 
 _infra-up: _network-up
-	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile qdrant up -d
+	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml up -d
 
 _infra-down:
 	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml down
@@ -55,14 +55,14 @@ _chat-down:
 _chat-build:
 	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml build
 
-_webui-up: _network-up _webui-build
-	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml up -d --force-recreate
+_webui-up: _network-up
+	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml up -d --build --force-recreate
 
 _webui-down:
 	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml down
 
 _webui-build:
-	npm --prefix webui run build
+	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml build
 
 _tei-up: _network-up
 	docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml up -d

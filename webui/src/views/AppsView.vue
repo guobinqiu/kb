@@ -12,6 +12,7 @@
           <el-input
             v-model.trim="newAppId"
             :placeholder="t('apps.appIdPlaceholder')"
+            :maxlength="40"
             clearable
           />
         </el-form-item>
@@ -93,7 +94,7 @@ async function createApp() {
     showToast('error', t('apps.nameRule'))
     return
   }
-  if (!/^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(newAppId.value)) {
+  if (!/^[A-Za-z][A-Za-z0-9_]{1,39}$/.test(newAppId.value)) {
     showToast('error', t('apps.appIdRule'))
     return
   }

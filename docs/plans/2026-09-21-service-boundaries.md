@@ -2,14 +2,14 @@
 
 **Goal:** 明确 RAG Indexer 文档处理与 KB API 检索模块的职责、配置和部署边界。
 
-**Architecture:** `rag_indexer` 负责文档清洗，在进程内调用 Parser 与文档向量适配器。`kb_api/rag_retriever` 在 KB API 进程内运行，负责查询向量、重排和向量检索；KB API 接收搜索请求并校验工作区授权。
+**Architecture:** `rag_indexer` 负责文档清洗，在进程内调用 Parser 与文档向量适配器。`kb_api/rag_search` 在 KB API 进程内运行，负责查询向量、重排和向量检索；KB API 接收搜索请求并校验工作区授权。
 
 **Tech Stack:** Python 3.11、FastAPI、httpx、Pydantic、PyYAML、Docker Compose、pytest
 
 ## Global Constraints
 
 - App、org 树、用户、工作区授权和文件状态由 KB API 管理。
-- Parser、Inference、Retriever 作为进程内模块运行。
+- Parser、Inference、Search 作为进程内模块运行。
 - WebUI 与 Chat 通过 KB API 访问工作区文件和检索。
 
 ---
@@ -20,14 +20,14 @@
 - Move: `cleaning/indexer` -> `rag_indexer`
 - Move: `cleaning/parser` -> `kb_api/rag_indexer/parser`
 - Move: `cleaning/inference` -> `kb_api/rag_indexer/inference`
-- Move: `rag_retriever` -> `kb_api/rag_retriever`
+- Move: `rag_search` -> `kb_api/rag_search`
 - Modify: 所有 Python 导入与配置路径
 - Test: `kb_api/rag_indexer/tests`
-- Test: `kb_api/rag_retriever/tests`
+- Test: `kb_api/rag_search/tests`
 
 **Interfaces:**
-- Consumes: 当前 ParserService、Inference provider、Retriever 搜索管线。
-- Produces: `rag_indexer.parser.ParserService`、`rag_indexer.inference.InferenceComponents`、`kb_api.rag_retriever.Retriever`。
+- Consumes: 当前 ParserService、Inference provider、Search 搜索管线。
+- Produces: `rag_indexer.parser.ParserService`、`rag_indexer.inference.InferenceComponents`、`kb_api.rag_search.SearchService`。
 
 - [x] 移动目录并机械更新导入路径。
 - [x] 模块共用应用服务入口、镜像和依赖清单。
@@ -41,19 +41,19 @@
 - Create: `kb_api/rag_indexer/inference/service.py`
 - Modify: `kb_api/rag_indexer/core/index/service.py`
 - Modify: `kb_api/rag_indexer/core/api/services/search.py`
-- Modify: `kb_api/rag_retriever/service.py`
+- Modify: `kb_api/rag_search/service.py`
 - Test: `kb_api/rag_indexer/tests/unit/test_main_startup.py`
 - Test: `kb_api/rag_indexer/tests/unit/test_search.py`
 
 **Interfaces:**
 - Consumes: `ParserService.parse_url()`、dense/sparse/rerank provider。
-- Produces: Parser、Inference、Retriever 的进程内调用对象。
+- Produces: Parser、Inference、Search 的进程内调用对象。
 
-- [x] 启动测试覆盖进程内 Parser、Inference、Retriever 的初始化。
+- [x] 启动测试覆盖进程内 Parser、Inference、Search 的初始化。
 - [x] 实现本地 Parser 适配器与统一 Inference 组件装配。
 - [x] 在应用生命周期中启动并关闭本地组件。
-- [x] 将搜索路由改为直接调用 `kb_api.rag_retriever.Retriever`。
-- [x] 运行 Indexer、Parser、Inference、Retriever 单元测试。
+- [x] 将搜索路由改为直接调用 `kb_api.rag_search.SearchService`。
+- [x] 运行 Indexer、Parser、Inference、Search 单元测试。
 
 ### Task 3: 收敛部署与配置
 

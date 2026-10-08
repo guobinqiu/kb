@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 
-APP_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{1,63}$")
+APP_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{1,39}$")
 _current_app_id: ContextVar[str | None] = ContextVar("current_app_id", default=None)
 
 

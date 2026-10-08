@@ -21,7 +21,10 @@ class Channel:
 
 
 def worker():
-    return RabbitIndexWorker(object(), "amqp://unused", task_queue="tasks", callback_url="http://kb/result")
+    return RabbitIndexWorker(
+        object(), "amqp://unused", task_queue="tasks",
+        callback_url="http://kb/result", service_api_key="service-key",
+    )
 
 
 @pytest.mark.parametrize("response_status", [204, 503])
@@ -48,6 +51,7 @@ def test_worker_callback_preserves_ack(monkeypatch, response_status):
     assert callback_ids == [results[0]["error"]["traceId"]]
     assert len(requests) == 1
     assert requests[0].url == "http://kb/result"
+    assert requests[0].headers["X-Service-Api-Key"] == "service-key"
     assert channel.acked == ([1] if response_status == 204 else [])
     assert channel.nacked == ([(1, True)] if response_status == 503 else [])
 

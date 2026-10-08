@@ -20,6 +20,7 @@ RUN --mount=type=bind,source=kb_api/rag_indexer/pyproject.toml,target=/app/kb_ap
   fi
 
 COPY kb_api/__init__.py /app/kb_api/
+COPY kb_api/logging_config.py /app/kb_api/
 COPY kb_api/config /app/kb_api/config
 COPY kb_api/rag_indexer /app/kb_api/rag_indexer
 

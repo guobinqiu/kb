@@ -38,6 +38,11 @@ class ServiceError(RuntimeError):
 def route_request(monkeypatch):
 
     monkeypatch.setattr(limiter, "enabled", False)
+    monkeypatch.setattr(
+        auth_mod,
+        "get_current_credential",
+        lambda: AppCredential(app_id="", api_key="", user_id="user-1"),
+    )
     return Request({
         "type": "http",
         "method": "POST",
@@ -164,7 +169,11 @@ async def test_chat_stream_emits_token_done_events(route_request, monkeypatch):
 
 async def test_chat_stream_passes_workspace_scope_in_same_app_thread(route_request, monkeypatch):
 
-    monkeypatch.setattr(auth_mod, "get_current_credential", lambda: AppCredential(app_id="acme", api_key=""))
+    monkeypatch.setattr(
+        auth_mod,
+        "get_current_credential",
+        lambda: AppCredential(app_id="acme", api_key="", user_id="user-1"),
+    )
     observed = []
 
     class _Graph:
@@ -181,7 +190,7 @@ async def test_chat_stream_passes_workspace_scope_in_same_app_thread(route_reque
     assert observed[0][1] == observed[1][1]
 
 
-async def test_chat_stream_isolates_same_thread_for_different_users(route_request):
+async def test_chat_stream_isolates_same_thread_for_different_users(route_request, monkeypatch):
     thread_ids = []
 
     class _Graph:
@@ -190,13 +199,12 @@ async def test_chat_stream_isolates_same_thread_for_different_users(route_reques
             yield ("custom", {"type": "token", "content": "ok"})
 
     for user_id in ("user-1", "user-2"):
-        user_request = Request({
-            **route_request.scope,
-            "headers": [
-                (b"x-user-id", user_id.encode()),
-            ],
-        })
-        response = await chat_stream(user_request, ChatRequest(message="hi", thread_id="t1", workspace_ids=["ws-1"]), graph=_Graph())
+        monkeypatch.setattr(
+            auth_mod,
+            "get_current_credential",
+            lambda user_id=user_id: AppCredential(app_id="acme", api_key="", user_id=user_id),
+        )
+        response = await chat_stream(route_request, ChatRequest(message="hi", thread_id="t1", workspace_ids=["ws-1"]), graph=_Graph())
         _ = [chunk async for chunk in response.body_iterator]
 
     assert thread_ids[0] != thread_ids[1]

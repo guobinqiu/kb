@@ -17,13 +17,12 @@ docker exec -i postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.
 just kb up
 just indexer up
 just chat up
-npm --prefix webui ci
 just webui up
 ```
 
 打开管理台：<http://localhost:5175>。
 
-各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`，服务间使用 Compose 服务名通信。`deploy/infra.yaml` 默认启动 PostgreSQL、Qdrant、RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Milvus 与 etcd 保留在 `milvus` profile 中，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
+各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`，服务间使用 Compose 服务名通信。`deploy/infra.yaml` 使用 ParadeDB 镜像提供兼容 PostgreSQL 的关系数据库和默认向量后端，并启动 RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Qdrant、Milvus 与 etcd 按 profile 启用，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
 
 KB API 负责登录、应用、组织树、用户、工作区、文件、检索授权和索引任务状态；RAG Indexer 是纯 MQ 消费进程，从 RabbitMQ 消费索引与删除任务，通过 HTTP 向 KB API 回写结果，内含 Parser 与文档向量模块，不监听 HTTP 端口。公开搜索请求先进入 KB API，由 KB API 校验工作区授权，再调用 RAG 检索。Chat 使用一个 Uvicorn worker。
 
@@ -37,7 +36,7 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 | `just kb up/down/build` | 管理 KB API 或构建其镜像 |
 | `just indexer up/down/build` | 管理 RAG Indexer 或构建其镜像 |
 | `just chat up/down/build` | 管理 Chat 或构建其镜像 |
-| `just webui up/down/build` | 管理 WebUI/Nginx 或构建前端静态文件 |
+| `just webui up/down/build` | 管理 WebUI 服务或构建其镜像 |
 | `just tei up/down` | 管理 TEI 模型服务 |
 | `just mineru up/down` | 管理 MinerU 模型服务 |
 | `just --list` | 查看命令入口 |
@@ -48,25 +47,26 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 
 | 文件 | Compose 项目 | 服务 |
 | --- | --- | --- |
-| `deploy/infra.yaml` | `kb-infra` | PostgreSQL、Qdrant、RabbitMQ、MinIO、Collector、Jaeger；可选 Milvus、etcd |
+| `deploy/infra.yaml` | `kb-infra` | ParadeDB/PostgreSQL、RabbitMQ、MinIO、Collector、Jaeger；可选 Qdrant、Milvus、etcd |
 | `deploy/kb.yaml` | `kb-api` | KB API |
 | `deploy/indexer.yaml` | `kb-indexer` | RAG Indexer |
 | `deploy/chat.yaml` | `kb-chat` | Chat |
-| `deploy/webui.yaml` | `kb-webui` | WebUI/Nginx |
+| `deploy/webui.yaml` | `kb-webui` | WebUI |
 | `deploy/tei.yaml` | `kb-tei` | TEI |
 | `deploy/mineru.yaml` | `kb-mineru` | MinerU |
 
-`kb/indexer/chat up` 使用 `docker compose up -d --build --force-recreate`；`infra/tei/mineru up` 使用 `up -d`，不构建镜像。`just webui up` 先执行 `npm --prefix webui run build`，再执行 `up -d --force-recreate`；`just webui build` 只执行该 npm 命令，生成 `webui/dist`，不构建镜像。`kb/indexer/chat build` 执行各自的 Compose 镜像构建。
+`kb/indexer/chat/webui up` 使用 `docker compose up -d --build --force-recreate`；`infra/tei/mineru up` 使用 `up -d`，不构建镜像。WebUI 镜像在构建阶段执行 Vite 构建，运行阶段使用镜像内的 Nginx 托管静态文件并透明代理 KB API 与 Chat；认证由后端服务处理。`kb/indexer/chat/webui build` 执行各自的 Compose 镜像构建。
 
 所有 `down` 均执行对应项目的原生 `docker compose down`，停止并移除容器，不删除数据、镜像或共享外部网络 `kb-net`。
 
 容器名与服务名一致。
 
-使用 Qdrant 时，在 `kb_api/config/rag.yaml` 设置 `vector_db.qdrant.enable: true`、`vector_db.milvus.enable: false`，Qdrant 地址为 `http://qdrant:6333`。使用 Milvus 时启用对应配置，并显式启动 profile：
+`vector_db.postgres`、`vector_db.qdrant`、`vector_db.milvus` 及云端后端中必须且只能启用一个。默认启用 PostgreSQL 向量后端，数据写入同一个 ParadeDB 实例。使用 Qdrant 或 Milvus 时启用对应配置，并显式启动 profile：
 
-`vector_db.qdrant.bm25` 和 `vector_db.milvus.bm25` 分别控制建库时是否创建 BM25 字段及是否参与 sparse/hybrid 检索。Qdrant 使用向量库服务端的 `qdrant/bm25`，Milvus 使用内置 BM25 函数。关闭开关后现有集合仍可做 dense 检索；为已有 dense-only 集合开启 BM25 时，需要重新创建集合并重建文件索引。
+各后端的 `bm25` 控制建库时是否创建 BM25 能力及是否参与 sparse/hybrid 检索。PostgreSQL 后端使用 `pg_search`，Qdrant 使用服务端的 `qdrant/bm25`，Milvus 使用内置 BM25 函数。关闭开关后现有集合仍可做 dense 检索；为已有 dense-only 集合开启 BM25 时，需要重新创建集合并重建文件索引。`query_timeout`、`write_timeout`、`init_timeout`、`drop_timeout` 分别限制查询、写入、初始化和删除操作，`retry` 控制可重试数据库错误的重试次数与间隔。
 
 ```bash
+docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile qdrant up -d --force-recreate
 docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile milvus up -d --force-recreate
 ```
 
@@ -79,7 +79,7 @@ MinerU Compose 沿用官方方式在本地构建好的 `mineru:4` 镜像，不�
 
 内网部署 Indexer 只需 Indexer 镜像、配置及运行环境变量，并能访问所配置的解析与推理服务，不需要 KB API 管理端源码或本地模型目录。源码目录只在构建镜像时使用。
 
-网关 `/health` 转发到 KB API 的 `GET /health`；旧 `/ready` 和 Indexer HTTP 路由已移除。Indexer 容器健康检查仅检查 PID 1 存活，不表示 MQ 消费者就绪；消费情况通过 RabbitMQ 的消费者数量、队列积压和 Indexer 日志观察。
+Indexer 容器健康检查仅检查 PID 1 存活；消费情况通过 RabbitMQ 的消费者数量、队列积压和 Indexer 日志观察。
 
 ## 追踪运行
 
@@ -125,12 +125,12 @@ docker run --rm --network none -v "$PWD/deploy/jaeger/config.yaml:/etc/jaeger/co
 
 ## 测试
 
-KB API 测试使用独立的 PostgreSQL 数据库 `rag_test`，每个用例会清空该库的 `kb` 表。默认连接为 `postgresql://rag:rag@127.0.0.1:5432/rag_test`，可通过 `KB_TEST_DATABASE_URL` 覆盖；数据库名必须以 `_test` 结尾。
+KB API 测试使用独立的 PostgreSQL 数据库 `rag_test`，每个用例会清空该库的 KB 业务表。默认连接为 `postgresql://rag:rag@127.0.0.1:5432/rag_test`，可通过 `KB_TEST_DATABASE_URL` 覆盖；数据库名必须以 `_test` 结尾。
 正式库初始化执行 `scripts/db.sql`；测试库初始化执行 `scripts/test_db.sql`。
 
 ```bash
 uv sync --project kb_api
-kb_api/.venv/bin/python -m pytest kb_api/tests kb_api/rag_retriever/tests kb_api/rag_retriever/inference/tests/unit -q
+kb_api/.venv/bin/python -m pytest kb_api/tests kb_api/rag_search/tests kb_api/rag_search/inference/tests/unit -q
 uv sync --project kb_api/rag_indexer
 kb_api/rag_indexer/.venv/bin/python -m pytest kb_api/rag_indexer/tests/unit kb_api/rag_indexer/parser/tests/unit kb_api/rag_indexer/inference/tests/unit -q
 ```
@@ -187,10 +187,9 @@ Authorization: Bearer <user_token>
 | `POST` | `/api/v1/workspaces/{workspace_id}/files/{file_id}/complete` | 校验对象已上传，登记文件并发布索引任务 |
 | `GET/DELETE` | `/api/v1/workspaces/{workspace_id}/files/{file_id}` | 查询或删除文件 |
 | `GET` | `/api/v1/workspaces/{workspace_id}/chunks` | 分页查询知识库分片 |
-| `POST` | `/api/v1/workspaces/{workspace_id}/search` | 只检索指定工作区 |
 | `POST` | `/api/v1/rag/search` | 按已授权的 `workspace_ids` 检索，可跨知识库 |
 
-创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`kb.apps.id` 是 UUID 主键，`app_id` 是唯一且不可变的业务标识，索引任务和检索使用它定位 `imsdom_chunks`。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用；管理页应用路由使用 UUID，`X-App-Id` 请求头使用业务 `app_id`。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
+创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`apps.id` 是 UUID 主键，`app_id` 是 2-40 个字符、唯一且不可变的业务标识，索引任务和检索使用它定位 `imsdom_chunks`。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用；管理页应用路由使用 UUID，`X-App-Id` 请求头使用业务 `app_id`。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
 
 文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用完成接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，完成接口会复用该 ID。浏览器访问的 MinIO 地址由 `KB_MINIO_PUBLIC_URL` 配置，需能从访问 WebUI 的浏览器连通。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
 

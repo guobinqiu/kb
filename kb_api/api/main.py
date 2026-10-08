@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,19 +20,14 @@ from kb_api.api.routes.orgs import router as orgs_router
 from kb_api.api.routes.search import router as search_router
 from kb_api.api.routes.users import router as users_router
 from kb_api.api.routes.workspaces import apps_router as workspace_apps_router, router as workspaces_router
-from kb_api.rag_retriever.service import load_retriever
-from kb_api.rag_retriever.common.upstream import UpstreamServiceError
+from kb_api.rag_search.service import load_search_service
+from kb_api.rag_search.common.upstream import UpstreamServiceError
 from kb_api.api.services.minio import MinioStorage
 from kb_api.api.telemetry import flush_telemetry, get_trace_id, install_search_tracing
+from kb_api.logging_config import configure_logging, log_request_error
 
 
 logger = logging.getLogger("kb_api")
-
-
-def _keep_access_log(record: logging.LogRecord) -> bool:
-    if record.name != "uvicorn.access" or not isinstance(record.args, tuple) or len(record.args) != 5:
-        return True
-    return urlsplit(str(record.args[2])).path != "/health"
 
 
 def _error_detail(detail) -> str:
@@ -51,17 +45,45 @@ def _error_response(status_code: int, error: str, *, retryable: bool = False, he
     })
 
 
+def _log_request_error(request: Request, status_code: int, error: str, *, level: int) -> None:
+    trace_id = getattr(request.state, "trace_id", None) or get_trace_id()
+    log_request_error(
+        logger,
+        method=request.method,
+        path=request.url.path,
+        status_code=status_code,
+        trace_id=trace_id,
+        error=error,
+        level=level,
+    )
+
+
 async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    error = _error_detail(exc.detail)
+    if exc.status_code >= 500:
+        level = logging.ERROR
+    elif exc.status_code in {403, 409}:
+        level = logging.WARNING
+    else:
+        level = logging.DEBUG
+    _log_request_error(request, exc.status_code, error, level=level)
     return _error_response(
         exc.status_code,
-        _error_detail(exc.detail),
+        error,
         retryable=exc.status_code == 503,
         headers=exc.headers,
     )
 
 
 async def _validation_exception(request: Request, exc: RequestValidationError) -> JSONResponse:
-    return _error_response(422, _error_detail(exc.errors()), retryable=False)
+    error = _error_detail(exc.errors())
+    _log_request_error(request, 422, error, level=logging.DEBUG)
+    return _error_response(422, error, retryable=False)
+
+
+async def _upstream_exception(request: Request, exc: UpstreamServiceError) -> JSONResponse:
+    _log_request_error(request, exc.status_code, exc.error or str(exc), level=logging.ERROR)
+    return JSONResponse(status_code=exc.status_code, content=exc.detail())
 
 
 async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
@@ -87,10 +109,11 @@ def create_app(
     dao=None,
     storage=None,
     queue=None,
-    retriever=None,
+    search_service=None,
     vector=None,
     settings: Settings | None = None,
     token_secret: str | None = None,
+    service_api_key: str | None = None,
     initialize: bool = True,
 ) -> FastAPI:
     config = settings or Settings.from_env()
@@ -104,17 +127,17 @@ def create_app(
         config.minio_public_url,
     )
     queue = queue or RabbitMQClient(config.rabbitmq_url)
-    managed_retriever = None
-    provided_retriever = retriever
+    managed_search_service = None
+    provided_search_service = search_service
     provided_vector = vector
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        nonlocal managed_retriever
-        if provided_retriever is None:
-            managed_retriever = load_retriever()
-            application.state.retriever = managed_retriever
-            application.state.vector = managed_retriever.vector
+        nonlocal managed_search_service
+        if provided_search_service is None:
+            managed_search_service = load_search_service()
+            application.state.search_service = managed_search_service
+            application.state.vector = managed_search_service.vector
         if initialize:
             initialize_storage = getattr(storage, "initialize", None)
             if callable(initialize_storage):
@@ -130,19 +153,16 @@ def create_app(
             yield
         finally:
             queue.close()
-            if managed_retriever is not None:
-                managed_retriever.close()
+            if managed_search_service is not None:
+                managed_search_service.close()
             storage.close()
             dao.close()
             flush_telemetry()
 
-    logging.getLogger("uvicorn.access").addFilter(_keep_access_log)
+    configure_logging()
     application = FastAPI(title="KB API", version="0.1.0", lifespan=lifespan)
     install_search_tracing(application, service_name="kb_api")
-    application.add_exception_handler(
-        UpstreamServiceError,
-        lambda _request, exc: JSONResponse(status_code=exc.status_code, content=exc.detail()),
-    )
+    application.add_exception_handler(UpstreamServiceError, _upstream_exception)
     application.add_exception_handler(HTTPException, _http_exception)
     application.add_exception_handler(RequestValidationError, _validation_exception)
     application.add_exception_handler(Exception, _unhandled_exception)
@@ -150,10 +170,11 @@ def create_app(
     application.state.storage = storage
     application.state.queue = queue
     application.state.token_secret = token_secret or config.token_secret
+    application.state.service_api_key = service_api_key or config.service_api_key
     application.state.token_ttl_seconds = config.token_ttl_seconds
     application.state.api_limits = load_api_limits()
-    if provided_retriever is not None:
-        application.state.retriever = provided_retriever
+    if provided_search_service is not None:
+        application.state.search_service = provided_search_service
     if provided_vector is not None:
         application.state.vector = provided_vector
 

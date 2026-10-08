@@ -130,7 +130,7 @@ def _index_result(system, record, status):
                 "error": "parse failed", "service": "parser", "retryable": True, "traceId": "a" * 32,
             },
         },
-        headers=system["headers"],
+        headers=system["service_headers"],
     )
     assert response.status_code == 204, response.text
     return system["dao"].get_file(record["id"])

@@ -2,7 +2,7 @@
 
 **Goal:** Remove unused responsibilities and duplicate wrappers without changing public APIs or deployment boundaries.
 
-**Architecture:** Management HTTP code stays in `api/`; retrieval stays in `rag_retriever/`; indexing stays in `rag_indexer/`. Shared helpers remain inside their owning module rather than a new global package.
+**Architecture:** Management HTTP code stays in `api/`; retrieval stays in `rag_search/`; indexing stays in `rag_indexer/`. Shared helpers remain inside their owning module rather than a new global package.
 
 **Tech Stack:** Python, FastAPI, psycopg, HTTPX, pytest, Docker Compose.
 
@@ -23,7 +23,7 @@
 - Remove unused `list_apps(include_disabled=...)` arguments.
 - Verify org subtree listing through the user repository, existing permission tests, file callbacks and queue publishing tests.
 
-## Retriever
+## Search
 
 - Remove document indexing, stale-chunk cleanup and unused indexing deadline code from query-side vector clients.
 - Preserve collection creation/deletion and chunk pagination used by management APIs.
@@ -43,5 +43,5 @@
 ## Integration
 
 - Review every changed module and stale import; update affected documentation and tests.
-- Run management, Retriever and Inference suites serially, then Indexer unit suites.
+- Run management, Search and Inference suites serially, then Indexer unit suites.
 - Validate Compose configuration and `git diff --check`.

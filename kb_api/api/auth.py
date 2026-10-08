@@ -111,3 +111,11 @@ def current_user(request: Request) -> dict:
     if principal["principal_type"] != "user":
         raise HTTPException(status_code=403, detail="User token required")
     return principal["user"]
+
+
+def require_service_principal(request: Request) -> dict:
+    provided = request.headers.get("X-Service-Api-Key", "")
+    expected = request.app.state.service_api_key
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid service credentials")
+    return {"principal_type": "service"}

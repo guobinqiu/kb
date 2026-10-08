@@ -120,8 +120,6 @@ class RagClient:
         }
         if authorization and authorization.lower().startswith("bearer "):
             headers["Authorization"] = authorization
-        else:
-            headers["X-Principal-Type"] = "user"
         if app_id:
             headers["X-App-Id"] = app_id
         url = self._base_url + PATH

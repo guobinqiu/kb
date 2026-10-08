@@ -137,7 +137,7 @@
     "namePlaceholder": "Enter an enterprise name",
     "nameRule": "Enter an enterprise name",
     "appIdPlaceholder": "App ID, for example imsdom",
-    "appIdRule": "App ID must start with a letter and contain 2-64 letters, numbers, or underscores",
+    "appIdRule": "App ID must start with a letter and contain 2-40 letters, numbers, or underscores",
     "create": "Create enterprise",
     "created": "{name} created",
     "deleted": "{name} disabled",

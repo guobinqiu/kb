@@ -16,7 +16,7 @@
 ## Tasks
 
 1. Separate common, API and Indexer dependencies into dependency extras without changing version constraints; update the lock file.
-2. Make kb_api/Dockerfile copy only API, Retriever and configuration. Add rag_indexer/Dockerfile for Indexer and request_context.py.
+2. Make kb_api/Dockerfile copy only API, Search and configuration. Add rag_indexer/Dockerfile for Indexer and request_context.py.
 3. Update Compose build paths and replace full source mounts with a read-only configuration mount; retain the Indexer models mount.
 4. Update deployment documentation with image boundaries and rebuild requirements.
 5. Validate Compose, build both images, smoke-test them without source mounts, run backend tests, and recreate both local services.

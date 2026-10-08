@@ -15,7 +15,7 @@ def _connect():
 def _columns(table: str) -> set[str]:
     with _connect() as connection:
         rows = connection.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'kb' AND table_name = %s",
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = %s",
             (table,),
         ).fetchall()
     return {row["column_name"] for row in rows}
@@ -24,7 +24,7 @@ def _columns(table: str) -> set[str]:
 def test_schema_has_workspace_tables_and_file_workspace_scope():
     with _connect() as connection:
         rows = connection.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'kb' AND table_type = 'BASE TABLE'",
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
         ).fetchall()
     tables = {row["table_name"] for row in rows}
     assert tables == {"apps", "orgs", "users", "workspaces", "workspace_user", "workspace_org", "files"}
@@ -40,6 +40,16 @@ def test_schema_has_workspace_tables_and_file_workspace_scope():
     }
 
 
+def test_schema_limits_business_app_id_to_safe_identifier_length():
+    with _connect() as connection:
+        column = connection.execute(
+            "SELECT character_maximum_length FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = 'apps' AND column_name = 'app_id'",
+        ).fetchone()
+
+    assert column["character_maximum_length"] == 40
+
+
 def test_schema_enforces_unique_user_workspace_membership():
     with _connect() as connection:
         foreign_keys = connection.execute("""
@@ -51,7 +61,7 @@ def test_schema_enforces_unique_user_workspace_membership():
             JOIN information_schema.constraint_column_usage ccu
               ON ccu.constraint_name = tc.constraint_name
              AND ccu.table_schema = tc.table_schema
-            WHERE tc.table_schema = 'kb'
+            WHERE tc.table_schema = current_schema()
               AND tc.table_name = 'workspace_user'
               AND tc.constraint_type = 'FOREIGN KEY'
               AND kcu.column_name = 'user_id'
@@ -64,7 +74,7 @@ def test_schema_enforces_unique_user_workspace_membership():
             JOIN information_schema.key_column_usage kcu
               ON tc.constraint_name = kcu.constraint_name
              AND tc.table_schema = kcu.table_schema
-            WHERE tc.table_schema = 'kb'
+            WHERE tc.table_schema = current_schema()
               AND tc.table_name = 'workspace_user'
               AND tc.constraint_type = 'UNIQUE'
             GROUP BY tc.constraint_name
@@ -77,12 +87,12 @@ def test_schema_enforces_unique_user_workspace_membership():
 def test_schema_keeps_owner_outside_organization_tree():
     with _connect() as connection:
         nodes = connection.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'kb' AND table_name = 'nodes'",
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'nodes'",
         ).fetchone()
         owner_check = connection.execute("""
             SELECT 1
             FROM information_schema.check_constraints
-            WHERE constraint_schema = 'kb'
+            WHERE constraint_schema = current_schema()
               AND constraint_name = 'users_owner_org_check'
               AND check_clause ILIKE '%role%'
               AND check_clause ILIKE '%org_id%'
@@ -90,7 +100,7 @@ def test_schema_keeps_owner_outside_organization_tree():
         root_index = connection.execute("""
             SELECT 1
             FROM pg_indexes
-            WHERE schemaname = 'kb'
+            WHERE schemaname = current_schema()
               AND tablename = 'orgs'
               AND indexname = 'orgs_one_root_per_app'
               AND indexdef ILIKE '%parent_id IS NULL%'
