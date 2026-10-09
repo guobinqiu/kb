@@ -21,7 +21,6 @@ def test_main_runs_consumer_and_closes_clients(monkeypatch):
         "indexer": {"callback": {"url": "https://kb.example/api/v1/index-results", "timeout": 25}},
     })
     monkeypatch.setenv("RABBITMQ_URL", "amqp://rabbitmq")
-    monkeypatch.setenv("SERVICE_API_KEY", "service-key")
     monkeypatch.setattr(main, "load_app_config", lambda: config)
     monkeypatch.setattr(main, "_build_state", lambda config: state)
     monkeypatch.setattr(main, "_close_clients", lambda value: calls.append(("close", value)))
@@ -34,7 +33,6 @@ def test_main_runs_consumer_and_closes_clients(monkeypatch):
             assert kwargs["task_queue"] == "kb.index.tasks"
             assert kwargs["callback_url"] == "https://kb.example/api/v1/index-results"
             assert kwargs["callback_timeout"] == 25
-            assert kwargs["service_api_key"] == "service-key"
 
         def run(self):
             calls.append("run")
@@ -52,7 +50,6 @@ def test_main_closes_clients_when_consumer_fails(monkeypatch):
     state = object()
     closed = []
     monkeypatch.setenv("RABBITMQ_URL", "amqp://rabbitmq")
-    monkeypatch.setenv("SERVICE_API_KEY", "service-key")
     monkeypatch.setattr(main, "load_app_config", lambda: SimpleNamespace(indexer=SimpleNamespace(
         callback=SimpleNamespace(url="http://kb/result", timeout=10),
     )))
@@ -79,13 +76,6 @@ def test_main_closes_clients_when_consumer_fails(monkeypatch):
 def test_main_requires_mq_before_loading_components(monkeypatch):
     monkeypatch.delenv("RABBITMQ_URL", raising=False)
     with pytest.raises(ValueError, match="RABBITMQ_URL"):
-        main.main()
-
-
-def test_main_requires_service_api_key_before_loading_components(monkeypatch):
-    monkeypatch.setenv("RABBITMQ_URL", "amqp://rabbitmq")
-    monkeypatch.delenv("SERVICE_API_KEY", raising=False)
-    with pytest.raises(ValueError, match="SERVICE_API_KEY"):
         main.main()
 
 

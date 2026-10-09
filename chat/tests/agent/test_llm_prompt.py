@@ -17,6 +17,13 @@ def test_prompt_is_loaded_from_config():
 
 
 @pytest.mark.unit
+def test_settings_read_jwt_secret(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "jwt-secret-at-least-32-bytes-long")
+
+    assert _load_settings()["token_secret"] == "jwt-secret-at-least-32-bytes-long"
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.parametrize("rag_context", ["", "Reference document"])
 async def test_prompt_and_time_refresh_without_changing_history(monkeypatch, rag_context):

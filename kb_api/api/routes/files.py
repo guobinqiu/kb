@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
 import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from kb_api.api.auth import current_user, require_service_principal
-from kb_api.api.schemas import FileUploadWorkspaceComplete, FileUploadWorkspaceRequest
+from kb_api.api.auth import current_user
 from kb_api.api.permissions import (
     WORKSPACE_FILES_DELETE,
     WORKSPACE_FILES_READ,
@@ -15,10 +16,10 @@ from kb_api.api.permissions import (
     can_change_workspace_file,
     has_workspace_permission,
 )
-from kb_api.api.services.rabbitmq import INDEX_TASK_QUEUE
 from kb_api.api.rate_limit import require_index_rate_limit, require_rate_limit
+from kb_api.api.schemas import FileUploadWorkspaceComplete, FileUploadWorkspaceRequest
+from kb_api.api.services.rabbitmq import INDEX_TASK_QUEUE
 from kb_api.api.telemetry import get_trace_id
-
 
 router = APIRouter(prefix="/api/v1", tags=["files"])
 SUPPORTED_FILE_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".md"}
@@ -52,6 +53,20 @@ def _workspace_task(record: dict, app: dict, operation: str) -> dict:
         "file_id": record["id"],
         "s3_url": record["s3_url"],
         "filename": record["filename"],
+    }
+
+
+def _prepare_workspace_task(dao, record: dict, app: dict, operation: str) -> dict:
+    task_id = str(uuid.uuid4())
+    callback_token = secrets.token_urlsafe(32)
+    dao.set_file_index_task(
+        record["id"],
+        task_id=task_id,
+        token_hash=hashlib.sha256(callback_token.encode()).hexdigest(),
+    )
+    return _workspace_task(record, app, operation) | {
+        "task_id": task_id,
+        "callback_token": callback_token,
     }
 
 
@@ -154,7 +169,7 @@ def complete_workspace_upload(
         )
     app = dao.get_app(workspace["app_id"])
     try:
-        request.app.state.queue.publish(INDEX_TASK_QUEUE, _workspace_task(record, app, "index"))
+        request.app.state.queue.publish(INDEX_TASK_QUEUE, _prepare_workspace_task(dao, record, app, "index"))
     except Exception as exc:
         error = _queue_failure(exc)
         dao.update_file(file_id, status="failed", error=error, indexed_at=None)
@@ -181,7 +196,7 @@ def delete_workspace_file(workspace_id: str, file_id: str, request: Request, use
     record = dao.update_file(file_id, status="deleting", error=None)
     app = dao.get_app(workspace["app_id"])
     try:
-        request.app.state.queue.publish(INDEX_TASK_QUEUE, _workspace_task(record, app, "delete"))
+        request.app.state.queue.publish(INDEX_TASK_QUEUE, _prepare_workspace_task(dao, record, app, "delete"))
     except Exception as exc:
         error = _queue_failure(exc)
         dao.update_file(file_id, status="delete_failed", error=error)
@@ -189,14 +204,14 @@ def delete_workspace_file(workspace_id: str, file_id: str, request: Request, use
     return record
 
 
-def apply_index_result(dao, storage, message: dict) -> None:
+def apply_index_result(dao, storage, message: dict, *, task_id: str, token_hash: str) -> bool:
     file_id = message.get("file_id")
     operation = message.get("operation")
     if not isinstance(file_id, str) or operation not in {"index", "delete"}:
         raise ValueError("result requires operation and file_id")
     existing = dao.get_file(file_id, include_deleted=True)
     if not existing:
-        return
+        return False
     incoming_status = message.get("status")
     success = message.get("success")
     if operation == "delete":
@@ -205,22 +220,40 @@ def apply_index_result(dao, storage, message: dict) -> None:
     else:
         deleted = False
         result_status = "indexed" if incoming_status in {"indexed", "success"} or success is True else "failed"
-    dao.apply_file_result(
+    updated = dao.apply_file_result(
         file_id,
+        task_id=task_id,
+        token_hash=token_hash,
         status=result_status,
         error=message.get("error"),
         indexed_at=message.get("indexed_at"),
         deleted=deleted,
     )
+    if not updated:
+        return False
     if deleted and existing.get("s3_url"):
         storage.delete(existing["s3_url"])
+    return True
 
 
 @router.post(
     "/index-results",
     status_code=204,
-    dependencies=[Depends(require_service_principal)],
 )
 def update_index_result(body: dict, request: Request):
-    apply_index_result(request.app.state.dao, request.app.state.storage, body)
+    file_id = body.get("file_id")
+    operation = body.get("operation")
+    task_id = body.get("task_id")
+    callback_token = body.get("callback_token")
+    if not all(isinstance(value, str) and value for value in (file_id, operation, task_id, callback_token)):
+        raise HTTPException(status_code=401, detail="Invalid callback credentials")
+    token_hash = hashlib.sha256(callback_token.encode()).hexdigest()
+    if not apply_index_result(
+        request.app.state.dao,
+        request.app.state.storage,
+        body,
+        task_id=task_id,
+        token_hash=token_hash,
+    ):
+        raise HTTPException(status_code=401, detail="Invalid callback credentials")
     return Response(status_code=204)

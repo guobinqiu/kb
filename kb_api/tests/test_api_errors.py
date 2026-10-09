@@ -6,7 +6,7 @@ def test_http_exception_uses_error_response_shape(system):
         "/api/v1/apps", json={"name": "Documents", "app_id": "documents"}, headers=system["headers"]
     ).json()["app"]
     workspace = system["client"].post(
-        f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Documents"}, headers=system["headers"]
+        f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Documents"}, headers=system["headers"]
     ).json()["workspace"]
     system["dao"].create_file(
         id="11111111-1111-4111-8111-111111111111",
@@ -37,7 +37,7 @@ def test_unhandled_upload_error_returns_original_detail(system, monkeypatch):
         "/api/v1/apps", json={"name": "Documents", "app_id": "documents"}, headers=system["headers"]
     ).json()["app"]
     workspace = system["client"].post(
-        f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Documents"}, headers=system["headers"]
+        f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Documents"}, headers=system["headers"]
     ).json()["workspace"]
 
     def fail_presign(*_args, **_kwargs):

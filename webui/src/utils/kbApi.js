@@ -41,12 +41,8 @@ export async function removeOrg(id) {
 }
 
 export async function updateOrg(id, payload) {
-  const response = await axios.put(`${API}/orgs/${encodeURIComponent(id)}`, payload)
+  const response = await axios.patch(`${API}/orgs/${encodeURIComponent(id)}`, payload)
   return response.data
-}
-
-export async function purgeOrg(id) {
-  await axios.delete(`${API}/orgs/${encodeURIComponent(id)}/permanent`)
 }
 
 export async function getUsers(orgId, includeDisabled = false) {
@@ -66,7 +62,7 @@ export async function removeUser(id) {
 }
 
 export async function updateUser(id, payload) {
-  const response = await axios.put(`${API}/users/${encodeURIComponent(id)}`, payload)
+  const response = await axios.patch(`${API}/users/${encodeURIComponent(id)}`, payload)
   return response.data
 }
 

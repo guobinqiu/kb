@@ -19,7 +19,7 @@ services:
     image: kb-api:${IMAGE_TAG:-dev}
     environment:
       TZ: Asia/Shanghai
-      KB_RABBITMQ_URL: ${RABBITMQ_URL:-amqp://kb:kb@rabbitmq:5672/%2F}
+      KB_RABBITMQ_URL: ${RABBITMQ_URL:-amqp://admin:admin123@rabbitmq:5672/%2F}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}

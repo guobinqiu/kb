@@ -54,7 +54,6 @@
     "edit": "编辑",
     "disable": "停用",
     "restore": "恢复",
-    "deletePermanently": "永久删除",
     "deleting": "删除中",
     "search": "查询",
     "actions": "操作",
@@ -199,8 +198,6 @@
     "deleteConfirm": "停用组织 {name}？其下级组织和用户也将暂停访问。",
     "disabled": "{name} 已停用",
     "restored": "{name} 已恢复",
-    "purged": "{name} 已永久删除",
-    "purgeConfirm": "永久删除空组织 {name}？此操作不可恢复。",
     "empty": "暂无组织"
   },
   "workspaceScope": {

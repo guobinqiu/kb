@@ -79,25 +79,25 @@ def test_org_list_shows_entire_app_without_granting_workspace_access(system):
     login = system["client"].post("/api/v1/auth/login", json={"name": user["name"], "password": "password-123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-    response = system["client"].get(f"/api/v1/orgs?app_id={created['app']['id']}", headers=headers)
+    response = system["client"].get(f"/api/v1/orgs?app_id={created['app']['app_id']}", headers=headers)
     assert response.status_code == 200
     expected_org_ids = {org["id"], branch["id"], leaf["id"], sibling["id"]}
     assert {org["id"] for org in response.json()["orgs"]} == expected_org_ids
     response = system["client"].get("/api/v1/orgs", headers=headers)
     assert {org["id"] for org in response.json()["orgs"]} == expected_org_ids
-    assert system["client"].get(f"/api/v1/orgs?app_id={other['app']['id']}", headers=headers).status_code == 403
+    assert system["client"].get(f"/api/v1/orgs?app_id={other['app']['app_id']}", headers=headers).status_code == 403
     workspace = system["client"].post(
-        f"/api/v1/apps/{created['app']['id']}/workspaces", json={"name": "Private"}, headers=system["headers"]
+        f"/api/v1/apps/{created['app']['app_id']}/workspaces", json={"name": "Private"}, headers=system["headers"]
     ).json()["workspace"]
     assert system["client"].get(f"/api/v1/workspaces/{workspace['id']}/files", headers=headers).status_code == 404
     assert system["client"].get(f"/api/v1/orgs/{org['id']}", headers=headers).status_code == 404
 
 
-def test_management_put_and_delete(system):
+def test_management_patch_and_delete(system):
     created = _create_app(system)
-    app_id = created["app"]["id"]
+    app_id = created["app"]["app_id"]
     org_id = created["org"]["id"]
-    updated_app = system["client"].put(
+    updated_app = system["client"].patch(
         f"/api/v1/apps/{app_id}", json={"name": "Renamed"}, headers=system["headers"]
     )
     assert updated_app.status_code == 200
@@ -106,7 +106,7 @@ def test_management_put_and_delete(system):
     user = system["dao"].create_user(
         org_id=org_id, name="member", password_hash=hash_password("password-123")
     )
-    updated_user = system["client"].put(
+    updated_user = system["client"].patch(
         f"/api/v1/users/{user['id']}", json={"role": "admin"}, headers=system["headers"]
     )
     assert updated_user.json()["role"] == "admin"
@@ -147,7 +147,7 @@ def test_management_lists_are_scoped_by_requested_app_and_org(system):
     ).json()
 
     orgs = system["client"].get(
-        "/api/v1/orgs", params={"app_id": first["app"]["id"]}, headers=system["headers"]
+        "/api/v1/orgs", params={"app_id": first["app"]["app_id"]}, headers=system["headers"]
     ).json()["orgs"]
     users = system["client"].get(
         "/api/v1/users", params={"org_id": branch["id"]}, headers=system["headers"]

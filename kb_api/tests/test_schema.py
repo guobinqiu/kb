@@ -37,6 +37,7 @@ def test_schema_has_workspace_tables_and_file_workspace_scope():
     assert _columns("files") == {
         "id", "workspace_id", "filename", "s3_url", "mime_type", "size_bytes",
         "checksum", "status", "error", "created_by", "created_at", "updated_at", "indexed_at", "deleted_at",
+        "index_task_id", "index_callback_token_hash",
     }
 
 

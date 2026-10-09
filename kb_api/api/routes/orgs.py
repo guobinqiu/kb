@@ -23,18 +23,19 @@ def list_orgs(request: Request, app_id: str | None = None, include_disabled: boo
     if include_disabled:
         require_admin(dao, user, user.get("org_id"))
     if app_id is not None:
-        if not dao.get_app(app_id):
+        app = dao.get_app_by_business_id(app_id)
+        if not app:
             raise HTTPException(status_code=404, detail="App not found")
-        if user["role"] != "owner" and not any(app["id"] == app_id for app in dao.list_apps(user["org_id"])):
+        if user["role"] != "owner" and not any(item["id"] == app["id"] for item in dao.list_apps(user["org_id"])):
             raise HTTPException(status_code=403, detail="App is outside visible scope")
         if user["role"] == "owner" and not include_disabled:
-            orgs = dao.list_app_orgs(app_id)
+            orgs = dao.list_app_orgs(app["id"])
         else:
             orgs = dao.list_orgs(
                 None if user["role"] == "owner" else user["org_id"],
                 include_disabled=include_disabled,
             )
-            orgs = [org for org in orgs if org["app_id"] == app_id]
+            orgs = [org for org in orgs if org["app_id"] == app["id"]]
     else:
         orgs = dao.list_orgs(
             None if user["role"] == "owner" else user["org_id"],
@@ -58,7 +59,7 @@ def get_org(org_id: str, request: Request, user=Depends(current_user)):
     return _visible_org(request.app.state.dao, user, org_id)
 
 
-@router.put("/{org_id}")
+@router.patch("/{org_id}")
 def update_org(org_id: str, body: OrgUpdate, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     org = _visible_org(dao, user, org_id)
@@ -97,16 +98,4 @@ def delete_org(org_id: str, request: Request, user=Depends(current_user)):
         raise HTTPException(status_code=409, detail="Current user's org cannot be disabled")
     if not dao.delete_org(org_id):
         raise HTTPException(status_code=404, detail="Org not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.delete("/{org_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
-def purge_org(org_id: str, request: Request, user=Depends(current_user)):
-    dao = request.app.state.dao
-    org = _visible_org(dao, user, org_id)
-    require_admin(dao, user, org_id)
-    if org["parent_id"] is None:
-        raise HTTPException(status_code=409, detail="Top-level org cannot be removed")
-    if not org.get("deleted_at") or not dao.purge_org(org_id):
-        raise HTTPException(status_code=409, detail="Only empty disabled orgs can be removed")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -22,13 +22,13 @@ def test_workspace_membership_is_independent_of_organization(system):
     member_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
     created_workspace = client.post(
-        f"/api/v1/apps/{app['id']}/workspaces",
+        f"/api/v1/apps/{app['app_id']}/workspaces",
         json={"name": "Shared Policies"}, headers=owner_headers,
     )
     assert created_workspace.status_code == 201
     workspace = created_workspace.json()["workspace"]
     assert workspace["app_id"] == app["id"]
-    assert client.get(f"/api/v1/apps/{app['id']}/workspaces", headers=member_headers).json() == {
+    assert client.get(f"/api/v1/apps/{app['app_id']}/workspaces", headers=member_headers).json() == {
         "workspaces": [], "permissions": {"workspace.create": True},
     }
 
@@ -37,7 +37,7 @@ def test_workspace_membership_is_independent_of_organization(system):
         json={"type": "user", "id": member["id"], "role": "editor"}, headers=owner_headers,
     )
     assert added.status_code == 201
-    visible = client.get(f"/api/v1/apps/{app['id']}/workspaces", headers=member_headers)
+    visible = client.get(f"/api/v1/apps/{app['app_id']}/workspaces", headers=member_headers)
     assert [item["id"] for item in visible.json()["workspaces"]] == [workspace["id"]]
 
     detail = client.get(f"/api/v1/workspaces/{workspace['id']}", headers=member_headers)
@@ -76,7 +76,7 @@ def test_member_can_create_workspace_in_own_app_and_manage_its_members(system):
     )
     login = client.post("/api/v1/auth/login", json={"name": member["name"], "password": "password123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    response = client.post(f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Member Workspace"}, headers=headers)
+    response = client.post(f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Member Workspace"}, headers=headers)
     assert response.status_code == 201
     workspace = response.json()["workspace"]
     assert workspace["created_by"] == member["id"]
@@ -89,7 +89,7 @@ def test_member_can_create_workspace_in_own_app_and_manage_its_members(system):
         json={"type": "user", "id": colleague["id"], "role": "editor"}, headers=headers,
     ).status_code == 201
     assert client.post(
-        f"/api/v1/apps/{other_app['id']}/workspaces", json={"name": "Forbidden"}, headers=headers,
+        f"/api/v1/apps/{other_app['app_id']}/workspaces", json={"name": "Forbidden"}, headers=headers,
     ).status_code == 403
     assert dao.list_workspaces(other_app["id"]) == []
 
@@ -106,8 +106,8 @@ def test_search_uses_authorized_workspaces_not_organization_subtree(system):
     )
     login = client.post("/api/v1/auth/login", json={"name": user["name"], "password": "password123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}", "X-App-Id": app["app_id"]}
-    first = client.post(f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Policies"}, headers=owner_headers).json()["workspace"]
-    second = client.post(f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Finance"}, headers=owner_headers).json()["workspace"]
+    first = client.post(f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Policies"}, headers=owner_headers).json()["workspace"]
+    second = client.post(f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Finance"}, headers=owner_headers).json()["workspace"]
     client.post(f"/api/v1/workspaces/{first['id']}/members", json={"type": "user", "id": user["id"], "role": "viewer"}, headers=owner_headers)
 
     response = client.post("/api/v1/rag/search", json={"query": "policy"}, headers=headers)
@@ -118,31 +118,12 @@ def test_search_uses_authorized_workspaces_not_organization_subtree(system):
     assert forbidden.status_code == 403
 
 
-def test_auth_verify_rejects_ungranted_workspace(system):
-    dao = system["dao"]
-    app, org = dao.create_app("Acme", "acme")
-    workspace = dao.create_workspace(app["id"], "Private")
-    user = dao.create_user(
-        org_id=org["id"], name="member",
-        password_hash=hash_password("password123"),
-    )
-    login = system["client"].post("/api/v1/auth/login", json={"name": user["name"], "password": "password123"})
-    headers = {
-        "Authorization": f"Bearer {login.json()['access_token']}",
-        "X-App-Id": app["app_id"],
-        "X-Workspace-Id": workspace["id"],
-    }
-    assert system["client"].get("/api/v1/auth/verify", headers=headers).status_code == 403
-    dao.add_workspace_member(workspace["id"], user_id=user["id"])
-    assert system["client"].get("/api/v1/auth/verify", headers=headers).status_code == 200
-
-
 def test_app_cannot_be_deleted_while_it_contains_workspaces(system):
     dao = system["dao"]
     app, _ = dao.create_app("Acme", "acme")
     dao.create_workspace(app["id"], "Policies")
 
-    response = system["client"].delete(f"/api/v1/apps/{app['id']}", headers=system["headers"])
+    response = system["client"].delete(f"/api/v1/apps/{app['app_id']}", headers=system["headers"])
 
     assert response.status_code == 409
     assert dao.get_app(app["id"]) is not None

@@ -70,7 +70,6 @@ async def test_client_sends_bearer_auth_without_fabricated_traceparent(install_m
     # MockTransport bypasses automatic HTTP instrumentation; never synthesize a span ID.
     assert "traceparent" not in headers
     assert headers.get("Content-Type") == "application/json"
-    assert "X-Workspace-Id" not in headers
 
 
 @pytest.mark.asyncio
@@ -94,9 +93,33 @@ async def test_client_does_not_fabricate_identity_headers_without_authorization(
 
     headers = captured[0].headers
     assert "Authorization" not in headers
-    assert "X-Principal-Type" not in headers
     assert headers["X-App-Id"] == "app-id"
-    assert "X-Workspace-Id" not in headers
+
+
+@pytest.mark.asyncio
+async def test_client_sends_app_api_key_headers(install_mock_transport):
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"results": [], "elapsed_ms": 1.0})
+
+    install_mock_transport(handler)
+    client = RagClient(base_url="http://rag.local:8000")
+    from chat.src.rag.schemas import SearchRequest
+    try:
+        await client.search(
+            SearchRequest(query="hi", workspace_ids=["workspace-1"]),
+            app_id="my_app",
+            api_key="app-secret",
+        )
+    finally:
+        await client.aclose()
+
+    headers = captured[0].headers
+    assert headers["X-App-Id"] == "my_app"
+    assert headers["X-API-Key"] == "app-secret"
+    assert "Authorization" not in headers
 
 
 @pytest.mark.asyncio

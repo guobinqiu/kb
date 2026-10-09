@@ -31,7 +31,7 @@
 - Test: `kb_api/tests/test_schema.py`
 
 **Interfaces:**
-- Produces: `POST /api/v1/auth/login`、`GET /internal/auth/verify`、PostgreSQL 初始化及身份上下文。
+- Produces: `POST /api/v1/auth/login`、PostgreSQL 初始化及 JWT 身份上下文。
 
 - [ ] 先写登录、Token 校验、平台 owner 初始化和表约束的失败测试。
 - [ ] 实现配置、数据库连接、密码哈希与签名 Token。
@@ -96,11 +96,9 @@
 - Modify: `deploy/env.example`
 
 **Interfaces:**
-- Produces: `kb_api` 应用服务、RabbitMQ 基础服务、Nginx 认证子请求和身份 Header。
+- Produces: `kb_api` 应用服务、RabbitMQ 基础服务和 Nginx 反向代理。
 
 - [ ] 加入 KB API 与 RabbitMQ 服务。
-- [ ] 配置 `/api/v1/auth/` 公共路由和其余 API 的认证子请求。
-- [ ] 注入 `X-App-Id`、`X-User-Id`、`X-Org-Id`、`X-Principal-Type`。
 - [ ] 验证 Compose 配置和健康检查。
 
 ### Task 6: WebUI 应用、组织、用户与文件管理

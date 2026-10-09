@@ -10,7 +10,7 @@ pytestmark = pytest.mark.unit
 
 
 async def test_trace_timeout_sets_trace_context_and_response_header():
-    request = Request({"type": "http", "method": "GET", "path": "/health", "headers": []})
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/llm/threads", "headers": []})
 
     async def next_handler(request):
         assert request.state.trace_id == trace_timeout.get_trace_id()

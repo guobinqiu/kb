@@ -174,7 +174,7 @@ async function refreshWorkspaceMenu(appId) {
 }
 
 function appRouteId(app) {
-  return app.id ?? app.app_id
+  return app.app_id
 }
 
 function logout() {

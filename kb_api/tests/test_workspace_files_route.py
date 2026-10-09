@@ -16,6 +16,7 @@ class DAO:
         self.workspace = {"id": "workspace-uuid", "app_id": "app-uuid"}
         self.org = {"id": "org-uuid", "app_id": "app-uuid"}
         self.files = {}
+        self.index_tasks = {}
         self.allowed = True
         self.workspace_role = "admin"
 
@@ -44,6 +45,22 @@ class DAO:
     def update_file(self, file_id, **values):
         self.files[file_id].update(values)
         return self.files[file_id]
+
+    def set_file_index_task(self, file_id, *, task_id, token_hash):
+        self.index_tasks[file_id] = (task_id, token_hash)
+
+    def apply_file_result(
+        self, file_id, *, task_id, token_hash, status, error, indexed_at, deleted=False,
+    ):
+        if self.index_tasks.get(file_id) != (task_id, token_hash):
+            return False
+        self.files[file_id].update({
+            "status": status,
+            "error": error,
+            "indexed_at": indexed_at,
+            "deleted_at": "deleted" if deleted else None,
+        })
+        return True
 
     def get_app(self, app_id):
         return {"id": app_id, "app_id": "business_app"} if app_id == "app-uuid" else None
@@ -119,20 +136,29 @@ def test_workspace_file_lifecycle_uses_workspace_scope_and_index_contract():
     assert record["workspace_id"] == "workspace-uuid"
     assert "org_id" not in record
     assert "node_id" not in record
-    assert queue.messages[-1] == (INDEX_TASK_QUEUE, {
+    queue_name, message = queue.messages[-1]
+    expected = {
         "operation": "index", "app_id": "business_app", "workspace_id": "workspace-uuid",
         "file_id": upload["file_id"], "s3_url": record["s3_url"], "filename": "guide.txt",
-    })
+    }
+    assert queue_name == INDEX_TASK_QUEUE
+    assert message.items() >= expected.items()
+    assert message["task_id"]
+    assert message["callback_token"]
     assert client.get(base).json() == {"files": [record]}
     assert client.get(f"{base}/{upload['file_id']}").json() == record
 
     deleted = client.delete(f"{base}/{upload['file_id']}")
     assert deleted.status_code == 202, deleted.text
     assert deleted.json()["status"] == "deleting"
-    assert queue.messages[-1][1] == {
+    message = queue.messages[-1][1]
+    expected = {
         "operation": "delete", "app_id": "business_app", "workspace_id": "workspace-uuid",
         "file_id": upload["file_id"], "s3_url": record["s3_url"], "filename": "guide.txt",
     }
+    assert message.items() >= expected.items()
+    assert message["task_id"]
+    assert message["callback_token"]
 
 
 def test_workspace_file_routes_reject_other_workspace_and_invalid_object_path():

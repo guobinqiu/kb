@@ -16,7 +16,7 @@ def _app(system):
 
 def _workspace(system, app, name):
     result = system["client"].post(
-        f"/api/v1/apps/{app['id']}/workspaces", json={"name": name}, headers=system["headers"]
+        f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": name}, headers=system["headers"]
     )
     assert result.status_code == 201, result.text
     return result.json()["workspace"]
@@ -37,7 +37,7 @@ def test_upload_stores_file_record_and_publishes_index_contract(system):
 
     queue_name, message = system["queue"].messages[-1]
     assert queue_name == INDEX_TASK_QUEUE == "kb.index.tasks"
-    assert message == {
+    expected = {
         "operation": "index",
         "app_id": "documents",
         "workspace_id": workspace["id"],
@@ -45,6 +45,9 @@ def test_upload_stores_file_record_and_publishes_index_contract(system):
         "s3_url": record["s3_url"],
         "filename": "guide.txt",
     }
+    assert message.items() >= expected.items()
+    assert message["task_id"]
+    assert message["callback_token"]
     assert system["client"].get(f"/api/v1/workspaces/{workspace['id']}/files", headers=system["headers"]).json()["files"] == [record]
 
 
@@ -119,18 +122,20 @@ def test_file_list_is_scoped_to_workspace(system):
 
 
 def _index_result(system, record, status):
+    task = system["queue"].messages[-1][1]
     response = system["client"].post(
         "/api/v1/index-results",
         json={
             "operation": "index",
             "file_id": record["id"],
+            "task_id": task["task_id"],
+            "callback_token": task["callback_token"],
             "status": status,
             "indexed_at": "2026-09-22T12:00:00+00:00" if status == "indexed" else None,
             "error": None if status == "indexed" else {
                 "error": "parse failed", "service": "parser", "retryable": True, "traceId": "a" * 32,
             },
         },
-        headers=system["service_headers"],
     )
     assert response.status_code == 204, response.text
     return system["dao"].get_file(record["id"])
@@ -183,10 +188,15 @@ def test_indexed_file_changed_content_publishes_new_index_task(system):
     assert updated["status"] == "indexing"
     assert updated["indexed_at"] is None
     assert len(system["queue"].messages) == task_count + 1
-    assert system["queue"].messages[-1] == (INDEX_TASK_QUEUE, {
+    queue_name, message = system["queue"].messages[-1]
+    assert queue_name == INDEX_TASK_QUEUE
+    expected = {
         "operation": "index", "app_id": "documents", "workspace_id": workspace["id"],
         "file_id": updated["id"], "s3_url": updated["s3_url"], "filename": updated["filename"],
-    })
+    }
+    assert message.items() >= expected.items()
+    assert message["task_id"]
+    assert message["callback_token"]
 
 
 def test_failed_file_same_content_can_index_again(system):

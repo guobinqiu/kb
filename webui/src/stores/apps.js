@@ -14,7 +14,7 @@ export const useAppsStore = defineStore('apps', () => {
     try {
       apps.value = await getApps()
       const activeAppStore = useActiveAppStore()
-      if (activeAppStore.appId && !apps.value.some(app => (app.id ?? app.app_id) === activeAppStore.appId)) {
+      if (activeAppStore.appId && !apps.value.some(app => app.app_id === activeAppStore.appId)) {
         activeAppStore.appId = ''
         activeAppStore.databaseStatus = null
       }

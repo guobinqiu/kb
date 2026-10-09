@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import yaml
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +24,7 @@ def _load_settings() -> dict:
     values["rag_rerank"] = rag.get("rerank", False)
     values["rag_query_rewrite"] = rag.get("query_rewrite", True)
     values["openai_api_key"] = os.getenv("OPENAI_API_KEY")
-    values["token_secret"] = os.getenv("KB_TOKEN_SECRET")
+    values["token_secret"] = os.getenv("JWT_SECRET")
     values["database_url"] = os.getenv("DATABASE_URL") or values.get("database_url")
     return values
 
@@ -62,6 +63,14 @@ class Settings(BaseSettings):
     rag_query_rewrite: bool = True
 
     model_config = SettingsConfigDict(hide_input_in_errors=True)
+
+    @field_validator("token_secret")
+    @classmethod
+    def validate_token_secret(cls, value: str) -> str:
+        value = value.strip()
+        if value.lower() == "change-me":
+            raise ValueError("JWT_SECRET uses an unsafe placeholder")
+        return value
 
     @classmethod
     def settings_customise_sources(

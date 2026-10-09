@@ -2,14 +2,13 @@ import pytest
 from contextlib import nullcontext
 from pydantic import ValidationError
 from types import SimpleNamespace
-from fastapi.testclient import TestClient
 
 from kb_api.api.routes.apps import create_app as create_app_route, list_apps as list_apps_route
 from kb_api.api.routes.users import create_user as create_user_route, list_users as list_users_route
 from kb_api.api.routes.workspaces import add_member as add_workspace_member_route
 from kb_api.api.schemas import AppCreate, UserCreate, WorkspaceMemberCreate
 from kb_api.api.auth import create_token, resolve_principal
-from kb_api.api.main import app, create_app
+from kb_api.api.main import app
 
 
 def test_user_payload_uses_org_id_and_owner_has_no_org():
@@ -58,6 +57,37 @@ def test_org_routes_replace_legacy_node_routes():
     assert not any(path.startswith("/api/v1/nodes") for path in paths)
 
 
+def test_app_routes_use_business_app_id():
+    paths = set(app.openapi()["paths"])
+
+    assert "/api/v1/apps/{app_id}" in paths
+    assert "/api/v1/apps/{app_id}/workspaces" in paths
+
+
+def test_partial_updates_use_patch_and_member_update_keeps_put():
+    paths = app.openapi()["paths"]
+
+    assert "patch" in paths["/api/v1/apps/{app_id}"]
+    assert "patch" in paths["/api/v1/orgs/{org_id}"]
+    assert "patch" in paths["/api/v1/users/{user_id}"]
+    assert "patch" in paths["/api/v1/workspaces/{workspace_id}"]
+    assert "put" in paths["/api/v1/workspaces/{workspace_id}/members/{member_id}"]
+
+
+def test_openapi_describes_supported_authentication():
+    schema = app.openapi()
+    schemes = schema["components"]["securitySchemes"]
+
+    assert schemes["BearerAuth"] == {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+    assert schemes["AppId"]["name"] == "X-App-Id"
+    assert schemes["AppApiKey"]["name"] == "X-API-Key"
+    assert schema["paths"]["/api/v1/rag/search"]["post"]["security"] == [
+        {"BearerAuth": [], "AppId": []},
+        {"AppApiKey": [], "AppId": []},
+    ]
+    assert schema["paths"]["/api/v1/index-results"]["post"]["security"] == []
+
+
 def test_search_only_exposes_rag_endpoint():
     paths = set(app.openapi()["paths"])
     assert "/api/v1/rag/search" in paths
@@ -89,6 +119,7 @@ def _request_for(user):
     request = SimpleNamespace(
         headers={"Authorization": f"Bearer {create_token({'sub': user['id']}, secret)}"},
         app=SimpleNamespace(state=SimpleNamespace(dao=dao, token_secret=secret)),
+        state=SimpleNamespace(),
     )
     return request, dao
 
@@ -210,35 +241,6 @@ class _MainDAO:
 
     def close(self):
         pass
-
-
-def test_owner_auth_context_uses_org_header_and_never_node_header(monkeypatch):
-    dao = _MainDAO()
-    application = create_app(
-        dao=dao,
-        storage=_NoopService(),
-        queue=_NoopService(),
-        search_service=SimpleNamespace(),
-        token_secret="test-secret",
-        initialize=False,
-    )
-    monkeypatch.setattr("kb_api.api.routes.auth.verify_password", lambda password, encoded: password == "password-123")
-
-    with TestClient(application) as client:
-        login = client.post("/api/v1/auth/login", json={"name": "owner", "password": "password-123"})
-        assert login.status_code == 200
-        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-        assert login.json()["user"]["org_id"] is None
-        assert client.get("/api/v1/auth/me", headers=headers).json()["org_id"] is None
-        verified = client.get(
-            "/api/v1/auth/verify",
-            headers=headers | {"X-App-Id": "business-app"},
-        )
-
-    assert verified.status_code == 200
-    assert verified.headers["X-Org-Id"] == ""
-    assert "X-Node-Id" not in verified.headers
-    assert "node_id" not in verified.json()
 
 
 class _WorkspaceDAO:

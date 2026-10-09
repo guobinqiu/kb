@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import AsyncIterator
-from hashlib import sha256
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -47,7 +46,7 @@ def _sse(payload: dict) -> str:
 # ───────────────────── /api/v1/llm/chat/stream ─────────────────────
 
 
-@router.post("/api/v1/llm/chat/stream", dependencies=[Depends(auth.require_user_principal)])
+@router.post("/api/v1/llm/chat/stream", dependencies=[Depends(auth.require_principal)])
 @limiter.limit(settings.rate_limit_chat)
 async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_graph)):  # noqa: B008
     """SSE 流式。
@@ -56,21 +55,21 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
     """
     set_thread_id(req.thread_id)
 
-    credential = auth.get_current_credential()
-    scope = (
-        f"{credential.app_id if credential else ''}:"
-        f"{credential.user_id if credential else ''}:"
-        f"{req.thread_id}"
-    )
-    thread_id = sha256(scope.encode()).hexdigest()
-    config = {"configurable": {"thread_id": thread_id}}
+    principal = request.state.principal
+    metadata = auth.principal_metadata(principal)
+    config = {
+        "configurable": {"thread_id": auth.scoped_thread_id(principal, req.thread_id)},
+        "metadata": {**metadata, "external_thread_id": req.thread_id},
+    }
     input_data = {
         "messages": [HumanMessage(content=req.message)],
         "workspace_ids": req.workspace_ids,
     }
 
     async def event_generator() -> AsyncIterator[str]:
-        token = auth.set_current_authorization(request.headers.get("Authorization"))
+        authorization = request.headers.get("Authorization") if principal.type == "user" else None
+        authorization_token = auth.set_current_authorization(authorization)
+        credential_token = auth.set_current_credential(principal)
         try:
             async for mode, payload in graph.astream(
                 input_data,
@@ -94,7 +93,8 @@ async def chat_stream(request: Request, req: ChatRequest, graph=Depends(_chat_gr
                 "traceId": get_trace_id(),
             })
         finally:
-            auth.reset_current_authorization(token)
+            auth.reset_current_credential(credential_token)
+            auth.reset_current_authorization(authorization_token)
 
     return StreamingResponse(
         event_generator(),

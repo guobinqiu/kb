@@ -19,11 +19,9 @@ git --version
 docker version
 docker compose version
 just --version
-node --version
-npm --version
 ```
 
-本次部署使用 Docker 29.1.2、Compose 5.0.0、Just 1.58.0、Node.js 22.21.0、npm 10.9.4。当前用户需要有 Docker 操作权限。
+本次部署使用 Docker 29.1.2、Compose 5.0.0、Just 1.58.0。WebUI 在 Docker 镜像内使用 Node.js 22 构建，部署主机无需单独安装 Node.js 或 npm。当前用户需要有 Docker 操作权限。
 
 检查已有模型服务：
 
@@ -102,12 +100,11 @@ nano deploy/.env
 | `IMAGE_TAG` | `dev` |
 | `KB_DATABASE_URL` | `postgresql://rag:rag@postgres:5432/rag` |
 | `KB_ADMIN_NAME` | `admin` |
-| `KB_ADMIN_PASSWORD` | 设置管理员登录密码，不保留 `change-me` |
-| `KB_TOKEN_SECRET` | 填入随机值，可用 `openssl rand -hex 32` 生成 |
-| `SERVICE_API_KEY` | 填入另一份随机值，供 Indexer 回写 KB API 使用 |
-| `RABBITMQ_USER` | `kb` |
-| `RABBITMQ_PASSWORD` | 设置队列密码，可用 `openssl rand -hex 24` 生成 |
-| `RABBITMQ_URL` | `amqp://kb:队列密码@rabbitmq:5672/%2F`，密码与上一项一致 |
+| `KB_ADMIN_PASSWORD` | 必填，至少 8 位；设置管理员初始登录密码，不能使用 `admin` 或 `change-me` |
+| `JWT_SECRET` | 必填；KB API 与 Chat 共享的用户 JWT 签名密钥，不能使用 `change-me` |
+| `RABBITMQ_USER` | `admin` |
+| `RABBITMQ_PASSWORD` | `admin123` |
+| `RABBITMQ_URL` | `amqp://admin:admin123@rabbitmq:5672/%2F` |
 | `KB_MINIO_ENDPOINT` | `minio:9000` |
 | `KB_MINIO_PUBLIC_URL` | `http://19.16.1.233:9000` |
 | `KB_MINIO_BUCKET` | `kb-files` |
@@ -151,7 +148,7 @@ KB API 和 Indexer 共用这个文件。所有 `vector_db` 后端中必须且只
 编辑 `chat/config/chat.yaml`，核对：
 
 ```yaml
-model_name: deepseek/deepseek-v4-flash-0731
+model_name: deepseek/deepseek-v4-flash-0731:nitro
 openai_base_url: https://openrouter.ai/api/v1
 llm_kwargs: '{"reasoning_effort":"high"}'
 database_url: postgresql://rag:rag@postgres:5432/rag
@@ -185,7 +182,7 @@ docker rename minio minio-legacy-stopped
 
 仅在存在该旧容器时执行。此命令保留旧容器和数据，不应对正在使用的 KB MinIO 执行。
 
-基础服务需要端口 `5432`、`5672`、`15672`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。选择 Qdrant 时还需要 `6333`、`6334`。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
+基础服务需要端口 `5432`、`5672`、`15672`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。选择 Qdrant 时还需要 `6333`、`6334`；选择 Milvus 时还需要 `2379`、`19530`、`9091`。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
 
 ## 7. 启动基础服务
 
@@ -307,6 +304,6 @@ just chat up
 just webui up
 ```
 
-仅前端依赖发生变化时，在 `just webui up` 前重新执行 `npm --prefix webui ci`。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just infra up`。
+前端依赖发生变化时直接执行 `just webui up`，Docker 构建阶段会重新安装依赖并生成静态文件。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just infra up`。
 
 项目数据分别保存在 `pg_data`、`qdrant_data`、`minio_data`、`rabbitmq_data`、`jaeger_data` 下；模型通过 `models` 链接复用。`.dockerignore` 已排除这些数据目录和 `.env`，数据库启动后仍可正常构建应用镜像。

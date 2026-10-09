@@ -1,17 +1,18 @@
-# Portable Business SQL
+# Simple Business SQL
 
 ## Scope
 
-Replace PostgreSQL-specific business query syntax in `kb_api/dao.py` with basic SQL and Python orchestration. Preserve the PostgreSQL driver and deployment scripts; database installation commands and third-party LangGraph SQL are not application query code.
+Keep business queries in `kb_api/api/dao` simple and move application orchestration to Python. The project still uses PostgreSQL through psycopg; this work reduces unnecessary SQL complexity rather than claiming compatibility with every database.
 
 ## Steps
 
-1. Use existing repository and API tests as behavioral baselines. Add transaction rollback and concurrent write tests in `kb_api/tests/test_dao_transactions.py`; run against the manually initialized `rag_test` database.
-2. Replace `RETURNING` with writes followed by `SELECT` on the same connection and transaction. Lock rows before read-modify-write updates.
-3. Replace `ON CONFLICT` with `SELECT`, `INSERT` or `UPDATE`. Serialize workspace grant changes using the existing workspace lock; retain unique constraints.
-4. Replace PostgreSQL functions with standard SQL: `CURRENT_TIMESTAMP`, aggregate counts, and `LOWER ... LIKE ... ESCAPE`. Use `ROW_NUMBER()` for server-side pagination rather than database-specific pagination syntax.
-5. Preserve standard recursive CTEs, joins, unions, and row locks. Keep parent checks and related deletes within one transaction.
-6. Run all KB API tests, relevant Indexer and Chat integration tests, and diff checks. Document the SQL-versus-driver portability boundary without claiming support for untested database engines.
+1. Keep DAO modules grouped by App, org, user, workspace and file business ownership.
+2. Use simple parameterized statements with explicit columns. Replace `RETURNING` and `ON CONFLICT` flows with ordinary writes and reads on the same connection when needed.
+3. Merge query results, traverse org trees and coordinate conditional flows in Python instead of using `UNION`, recursive CTEs or deeply nested SQL.
+4. Do not use `FOR UPDATE` for these management operations. Retain database uniqueness and foreign-key constraints and handle conflicts in application code.
+5. Keep every multi-write business operation in one explicit transaction so partial failures roll back together.
+6. Allow database-specific SQL only in schema initialization and vector providers where PostgreSQL, pgvector or ParadeDB capabilities are the implementation itself.
+7. Optimize a query only after measurement identifies a real bottleneck, and verify the changed behavior and transaction boundary with tests.
 
 ## Verification
 

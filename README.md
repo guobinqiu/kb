@@ -4,13 +4,13 @@
 
 单机部署使用 Docker Compose，本机构建并直接运行镜像。
 
-需要 Docker Compose v2、Just 和 Node.js 20.19+；当前前端可使用 Node.js 22 构建。
+部署需要 Docker Compose v2 和 Just。WebUI 在 Docker 构建阶段使用 Node.js 22；只有本地前端开发需要宿主机安装 Node.js 20.19+。
 
 233 的完整安装步骤见 [233 安装指南](docs/install-233.md)，包含模型服务、环境变量、数据库初始化和运行验证。
 
 ```bash
 cp deploy/env.example deploy/.env
-# 先编辑 deploy/.env，并核对解析、推理和对话服务配置
+# 先编辑 deploy/.env；JWT_SECRET 和 KB_ADMIN_PASSWORD 不能保留占位值
 just infra up
 until docker exec postgres pg_isready -U rag -d rag; do sleep 2; done
 docker exec -i postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
@@ -22,7 +22,7 @@ just webui up
 
 打开管理台：<http://localhost:5175>。
 
-各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`，服务间使用 Compose 服务名通信。`deploy/infra.yaml` 使用 ParadeDB 镜像提供兼容 PostgreSQL 的关系数据库和默认向量后端，并启动 RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Qdrant、Milvus 与 etcd 按 profile 启用，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
+各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`。Compose 内部服务使用服务名通信；MinerU、TEI 等模型服务也可以按 `kb_api/config/rag.yaml` 配置为宿主机或远程地址。`deploy/infra.yaml` 使用 ParadeDB 镜像提供兼容 PostgreSQL 的关系数据库和默认向量后端，并启动 RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Qdrant、Milvus 与 etcd 按 profile 启用，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
 
 KB API 负责登录、应用、组织树、用户、工作区、文件、检索授权和索引任务状态；RAG Indexer 是纯 MQ 消费进程，从 RabbitMQ 消费索引与删除任务，通过 HTTP 向 KB API 回写结果，内含 Parser 与文档向量模块，不监听 HTTP 端口。公开搜索请求先进入 KB API，由 KB API 校验工作区授权，再调用 RAG 检索。Chat 使用一个 Uvicorn worker。
 
@@ -160,9 +160,33 @@ Base URL 示例：
 http://localhost:5175
 ```
 
-### KB 管理 API
+### API 概况
 
-管理台使用用户令牌：
+| API 分组 | 主要路径 | 描述 | 认证方式 |
+| --- | --- | --- | --- |
+| 健康检查 | `GET /health` | KB API 和 Chat 各自提供，仅供容器内部检查 | 无 |
+| 用户登录 | `POST /api/v1/auth/login` | 使用账户名和密码换取 JWT | 无 |
+| 当前用户 | `/api/v1/auth/me`、`/api/v1/auth/password` | 查询当前用户、修改自己的密码 | JWT |
+| App 管理 | `/api/v1/apps*` | 管理 App 及其工作区 | JWT |
+| 组织和账户 | `/api/v1/orgs*`、`/api/v1/users*` | 管理组织树和企业账户 | JWT |
+| 工作区和成员 | `/api/v1/workspaces*` | 管理知识库及个人、组织授权 | JWT |
+| 文件和分片 | `/api/v1/workspaces/{workspace_id}/files*`、`/chunks` | 上传、查询和删除文件，查看索引分片 | JWT |
+| RAG 检索 | `/api/v1/rag/search`、`/api/v1/rag/config` | 跨已授权工作区检索，查询检索配置 | JWT 或 App API Key |
+| 对话 | `POST /api/v1/llm/chat/stream` | 检索知识库并流式生成回答 | JWT 或 App API Key |
+| 索引结果回写 | `POST /api/v1/index-results` | Indexer 完成任务后更新文件状态 | 任务回调令牌 |
+
+认证请求头：
+
+| 认证方式 | 请求头 |
+| --- | --- |
+| JWT | `Authorization: Bearer <jwt>`；涉及 App 上下文时同时发送 `X-App-Id: <app_id>` |
+| App API Key | `X-App-Id: <app_id>`、`X-API-Key: <app_api_key>` |
+
+JWT 与 App API Key 不能在同一请求中同时发送。Indexer 结果回写使用每个任务独立生成的随机令牌。
+
+### 接口明细
+
+管理接口使用 JWT：
 
 ```http
 Authorization: Bearer <user_token>
@@ -172,15 +196,18 @@ Authorization: Bearer <user_token>
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/login` | 用户登录 |
 | `GET` | `/api/v1/auth/me` | 当前用户与平台管理员能力 |
+| `PATCH` | `/api/v1/auth/password` | 当前用户验证旧密码后修改密码 |
 | `GET/POST` | `/api/v1/apps` | 查询或创建应用；每个 App 维护一棵独立 org 树 |
-| `GET/PUT/DELETE` | `/api/v1/apps/{app_id}` | 查询、修改或删除应用 |
-| `GET/POST` | `/api/v1/orgs` | 查询当前 App 的完整组织树或创建组织 |
-| `GET/PUT/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或删除组织 |
+| `GET/PATCH/DELETE` | `/api/v1/apps/{app_id}` | 按业务 `app_id` 查询、修改或删除应用 |
+| `GET/POST` | `/api/v1/orgs` | 查询当前用户可见的组织树或创建组织 |
+| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 |
 | `GET/POST` | `/api/v1/users` | 查询可见用户或创建用户 |
-| `GET/PUT/DELETE` | `/api/v1/users/{user_id}` | 查询、修改或删除用户 |
+| `GET/PATCH/DELETE` | `/api/v1/users/{user_id}` | 查询、修改或停用用户 |
 | `GET/POST` | `/api/v1/apps/{app_id}/workspaces` | 查询或创建知识库 |
-| `GET/PUT/DELETE` | `/api/v1/workspaces/{workspace_id}` | 查询、修改或删除知识库 |
+| `GET/PATCH/DELETE` | `/api/v1/workspaces/{workspace_id}` | 查询、修改或删除知识库 |
 | `GET/POST` | `/api/v1/workspaces/{workspace_id}/members` | 查询授权来源，或提交 `type/id/role` 新增个人或组织授权 |
+| `GET` | `/api/v1/workspaces/{workspace_id}/orgs` | 查询可加入工作区的组织 |
+| `GET` | `/api/v1/workspaces/{workspace_id}/users` | 分页查询可加入工作区的用户 |
 | `PUT/DELETE` | `/api/v1/workspaces/{workspace_id}/members/{member_id}?type=user或org` | 按授权记录 ID 修改角色或移除授权 |
 | `GET` | `/api/v1/workspaces/{workspace_id}/files` | 查询知识库文件 |
 | `POST` | `/api/v1/workspaces/{workspace_id}/files/upload-url` | 校验权限并签发 MinIO PUT 上传地址 |
@@ -188,19 +215,13 @@ Authorization: Bearer <user_token>
 | `GET/DELETE` | `/api/v1/workspaces/{workspace_id}/files/{file_id}` | 查询或删除文件 |
 | `GET` | `/api/v1/workspaces/{workspace_id}/chunks` | 分页查询知识库分片 |
 | `POST` | `/api/v1/rag/search` | 按已授权的 `workspace_ids` 检索，可跨知识库 |
+| `GET` | `/api/v1/rag/config` | 查询检索默认值和 sparse、rerank 能力 |
 
-创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`apps.id` 是 UUID 主键，`app_id` 是 2-40 个字符、唯一且不可变的业务标识，索引任务和检索使用它定位 `imsdom_chunks`。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用；管理页应用路由使用 UUID，`X-App-Id` 请求头使用业务 `app_id`。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
+创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`apps.id` 是数据库内部使用的 UUID 主键；`app_id` 是 2-40 个字符、唯一且不可变的业务标识，App 管理路径、`X-App-Id`、索引任务和检索统一使用它。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
 
 文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用完成接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，完成接口会复用该 ID。浏览器访问的 MinIO 地址由 `KB_MINIO_PUBLIC_URL` 配置，需能从访问 WebUI 的浏览器连通。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
 
 KB API 将索引和删除任务发布到 `kb.index.tasks`，RAG Indexer 通过 HTTP 回写接口更新结果。一个 App 可有多个 workspace；`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。操作和角色映射固定在代码，不建权限表。文件只归属 workspace，不归属 org；同一 App 的工作区共用向量 collection，分片保存 `workspace_id`、`file_id` 和 `chunk_index`。搜索可传多个 `workspace_ids` 和 `file_ids`，KB API 会校验工作区授权。详见[工作区授权概要设计](docs/workspace-authorization.md)。
-
-公共请求头：
-
-| 字段          | 必填 | 说明                   |
-| ------------- | ---- | ---------------------- |
-| Authorization | 是   | `Bearer <app_api_key>` |
-| Content-Type  | 是   | `application/json`     |
 
 ### 文件索引
 
@@ -212,7 +233,7 @@ KB API 将索引和删除任务发布到 `kb.index.tasks`，RAG Indexer 通过 H
 POST /api/v1/rag/search
 ```
 
-用于从当前应用的一个或多个工作区检索相关 chunk。开放接口使用 API Key 绑定的应用，不需要传 `app_id`。
+用于从当前应用的一个或多个工作区检索相关 chunk。外部系统必须同时发送 `X-App-Id` 和匹配的 `X-API-Key`；WebUI 发送用户 Token 和当前 `X-App-Id`。
 
 请求字段：
 
@@ -251,7 +272,7 @@ POST /api/v1/rag/search
 | ------ | -------------------------------- |
 | 200    | 搜索成功                         |
 | 400    | 参数错误、sparse/rerank 未配置等 |
-| 401    | 未传或无效的 `Authorization`     |
+| 401    | 未传或无效的用户 Token / App API Key |
 | 403    | 指定的工作区不在当前身份授权范围内 |
 | 422    | 请求体字段校验失败               |
 | 429    | 触发限流                         |
@@ -262,7 +283,8 @@ POST /api/v1/rag/search
 
 ```bash
 curl -X POST http://localhost:5175/api/v1/rag/search \
-  -H 'Authorization: Bearer <app_api_key>' \
+  -H 'X-App-Id: <app_id>' \
+  -H 'X-API-Key: <app_api_key>' \
   -H 'Content-Type: application/json' \
   -d '{
     "query": "代位权",
@@ -303,4 +325,49 @@ curl -X POST http://localhost:5175/api/v1/rag/search \
 }
 ```
 
-删除文件使用 `DELETE /api/v1/workspaces/{workspace_id}/files/{file_id}`，由 KB API 校验 workspace 权限并异步清理索引。
+删除文件使用 `DELETE /api/v1/workspaces/{workspace_id}/files/{file_id}`，由 KB API 校验 workspace 权限，将文件标记为 `deleting` 并返回 202。Indexer 异步清理索引并成功回写后，KB API 才软删除文件记录和 MinIO 对象；失败时状态为 `delete_failed`。
+
+### 对话
+
+```http
+POST /api/v1/llm/chat/stream
+```
+
+使用 JWT 或 App API Key 认证，通过 SSE 流式返回回答。请求必须明确指定本次允许检索的工作区：
+
+```json
+{
+  "thread_id": "conversation-1",
+  "message": "报销期限是多少？",
+  "workspace_ids": ["<workspace-id>"]
+}
+```
+
+Chat 将当前身份凭证和 `X-App-Id` 转发给 KB API；KB API 再校验工作区权限，Chat 不信任客户端直接提交的用户或组织身份。
+
+会话历史接口使用同一认证方式：
+
+```text
+GET    /api/v1/llm/threads
+GET    /api/v1/llm/threads/{thread_id}/messages
+DELETE /api/v1/llm/threads/{thread_id}
+```
+
+### 索引结果回写
+
+```http
+POST /api/v1/index-results
+Content-Type: application/json
+
+{
+  "operation": "index",
+  "file_id": "<file_id>",
+  "task_id": "<task_id>",
+  "callback_token": "<callback_token>",
+  "status": "indexed"
+}
+```
+
+该接口只供 RAG Indexer 使用。KB API 发布索引或删除任务时生成 `task_id` 和随机 `callback_token`，数据库只保存令牌摘要。Indexer 原样回传这两个字段以及 `operation`、`file_id`、`status`、`error` 和 `indexed_at`。回调只能更新当前任务，旧任务结果不能覆盖新任务状态；成功返回 204，凭证无效返回 401，Indexer 仅在回写成功后确认 MQ 消息。
+
+更完整的请求、响应和权限说明见 [API 文档](docs/api.md)。

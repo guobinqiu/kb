@@ -18,7 +18,7 @@ class Channel:
 
 def test_worker_consumes_in_foreground_and_closes_connection(monkeypatch):
     calls = []
-    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result", service_api_key="service-key")
+    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result")
     channel = SimpleNamespace(
         queue_declare=lambda **kwargs: calls.append(("declare", kwargs)),
         basic_qos=lambda **kwargs: calls.append(("qos", kwargs)),
@@ -46,7 +46,7 @@ def test_worker_consumes_in_foreground_and_closes_connection(monkeypatch):
 
 def test_worker_acks_task_after_result_callback_success(monkeypatch):
     monkeypatch.setattr("kb_api.rag_indexer.rabbitmq.time.sleep", lambda _seconds: None)
-    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result", service_api_key="service-key")
+    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result")
     worker._consumer = SimpleNamespace(handle=lambda value: None)
     channel = Channel()
 
@@ -62,7 +62,7 @@ def test_worker_requeues_task_when_result_callback_fails(monkeypatch):
     def fail(_value):
         raise RuntimeError("callback unavailable")
 
-    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result", service_api_key="service-key")
+    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result")
     worker._consumer = SimpleNamespace(handle=fail)
     channel = Channel()
 

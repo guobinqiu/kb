@@ -1,13 +1,11 @@
 import ast
 import asyncio
-import base64
-import hashlib
-import hmac
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
+import jwt
 import pytest
 from fastapi import FastAPI
 
@@ -23,13 +21,7 @@ def _user_token() -> str:
         "exp": int((datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp()),
         "sub": "user-1",
     }
-    encoded = base64.urlsafe_b64encode(
-        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
-    ).rstrip(b"=").decode()
-    signature = base64.urlsafe_b64encode(
-        hmac.new(b"test-secret", encoded.encode(), hashlib.sha256).digest()
-    ).rstrip(b"=").decode()
-    return f"{encoded}.{signature}"
+    return jwt.encode(payload, "test-secret-at-least-32-bytes-long", algorithm="HS256")
 
 
 def test_no_tracking_imports():

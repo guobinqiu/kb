@@ -16,13 +16,15 @@ class IndexTask:
     app_id: str
     workspace_id: str
     file_id: str
+    task_id: str
+    callback_token: str
     s3_url: str | None = None
     filename: str | None = None
 
     def __post_init__(self):
         if self.operation not in {"index", "delete"}:
             raise ValueError("operation must be index or delete")
-        for name in ("app_id", "workspace_id", "file_id"):
+        for name in ("app_id", "workspace_id", "file_id", "task_id", "callback_token"):
             if not getattr(self, name):
                 raise ValueError(f"{name} is required")
         if self.operation == "index" and (not self.s3_url or not self.filename):
@@ -37,6 +39,8 @@ class IndexTask:
             app_id=value.get("app_id", ""),
             workspace_id=value.get("workspace_id", ""),
             file_id=value.get("file_id", ""),
+            task_id=value.get("task_id", ""),
+            callback_token=value.get("callback_token", ""),
             s3_url=value.get("s3_url"),
             filename=value.get("filename"),
         )
@@ -89,6 +93,8 @@ def task_result(state, value: dict) -> dict:
         return {
             "operation": operation,
             "file_id": file_id,
+            "task_id": value.get("task_id"),
+            "callback_token": value.get("callback_token"),
             "success": False,
             "status": _failure_status(operation),
             "error": exc.detail(),
@@ -100,6 +106,8 @@ def task_result(state, value: dict) -> dict:
         return {
             "operation": operation,
             "file_id": file_id,
+            "task_id": value.get("task_id"),
+            "callback_token": value.get("callback_token"),
             "success": False,
             "status": _failure_status(operation),
             "error": {
@@ -121,6 +129,8 @@ def _result(task: IndexTask, **values) -> dict:
     return {
         "operation": task.operation,
         "file_id": task.file_id,
+        "task_id": task.task_id,
+        "callback_token": task.callback_token,
         "success": True,
         "status": "indexed" if task.operation == "index" else "deleted",
         "error": None,

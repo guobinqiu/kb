@@ -3,10 +3,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
 import os
 from datetime import datetime, timedelta, timezone
 
+import jwt
 from fastapi import HTTPException, Request
 
 
@@ -49,44 +49,42 @@ def create_token(
 ) -> str:
     payload = dict(claims)
     expiry = expires_at or datetime.now(timezone.utc) + expires_in
-    payload["exp"] = int(expiry.timestamp())
-    encoded = _b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
-    signature = _b64encode(hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest())
-    return f"{encoded}.{signature}"
+    payload["exp"] = expiry
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
 def decode_token(token: str, secret: str) -> dict:
     try:
-        encoded, signature = token.split(".", 1)
-        expected = _b64encode(hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest())
-        if not hmac.compare_digest(signature, expected):
-            raise ValueError("invalid token signature")
-        payload = json.loads(_b64decode(encoded))
-        if not isinstance(payload, dict) or int(payload["exp"]) <= int(datetime.now(timezone.utc).timestamp()):
-            raise ValueError("token expired")
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        if not isinstance(payload, dict):
+            raise ValueError("invalid token payload")
         return payload
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    except (jwt.InvalidTokenError, ValueError, TypeError) as exc:
         raise ValueError("invalid token") from exc
 
 
-def resolve_principal(request: Request) -> dict:
+def authenticate_request(request: Request) -> dict:
     api_key = request.headers.get("X-API-Key")
+    authorization = request.headers.get("Authorization", "")
+    if api_key and authorization.startswith("Bearer "):
+        raise HTTPException(status_code=400, detail="Use either user token or API key")
     if api_key:
         app = request.app.state.dao.get_app_by_api_key(api_key)
         if not app:
             raise HTTPException(status_code=401, detail="Invalid credentials")
+        requested_app_id = request.headers.get("X-App-Id")
+        if not requested_app_id:
+            raise HTTPException(status_code=400, detail="X-App-Id is required")
+        if app["app_id"] != requested_app_id:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
         return {"principal_type": "api_key", "app_id": app["app_id"], "user_id": None, "org_id": None}
 
-    authorization = request.headers.get("Authorization", "")
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     bearer = authorization[7:]
     try:
         claims = decode_token(bearer, request.app.state.token_secret)
     except ValueError as exc:
-        app = request.app.state.dao.get_app_by_api_key(bearer)
-        if app:
-            return {"principal_type": "api_key", "app_id": app["app_id"], "user_id": None, "org_id": None}
         raise HTTPException(status_code=401, detail="Invalid token") from exc
     user = request.app.state.dao.get_user(claims.get("sub", ""))
     if not user:
@@ -106,16 +104,20 @@ def resolve_principal(request: Request) -> dict:
     }
 
 
+def resolve_principal(request: Request) -> dict:
+    principal = getattr(request.state, "principal", None)
+    if principal is not None:
+        return principal
+    authentication_error = getattr(request.state, "authentication_error", None)
+    if authentication_error is not None:
+        raise HTTPException(status_code=authentication_error[0], detail=authentication_error[1])
+    principal = authenticate_request(request)
+    request.state.principal = principal
+    return principal
+
+
 def current_user(request: Request) -> dict:
     principal = resolve_principal(request)
     if principal["principal_type"] != "user":
         raise HTTPException(status_code=403, detail="User token required")
     return principal["user"]
-
-
-def require_service_principal(request: Request) -> dict:
-    provided = request.headers.get("X-Service-Api-Key", "")
-    expected = request.app.state.service_api_key
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Invalid service credentials")
-    return {"principal_type": "service"}

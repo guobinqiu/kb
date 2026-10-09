@@ -124,7 +124,7 @@ async function doSearch() {
   searchTime.value = null
   try {
     if (!appsStore.apps.length) await appsStore.fetchApps()
-    const app = appsStore.apps.find(item => item.id === route.params.app_id)
+    const app = appsStore.apps.find(item => item.app_id === route.params.app_id)
     if (!app) throw new Error('App not found')
     const fileIds = searchFileIds()
     const body = {
@@ -136,7 +136,7 @@ async function doSearch() {
       rerank: rerankVisible.value && rerank.value,
     }
     if (fileIds.length) body.file_ids = fileIds
-    const workspaces = appsStore.workspacesByApp[app.id] || []
+    const workspaces = appsStore.workspacesByApp[app.app_id] || []
     const res = await axios.post(`${API}/rag/search`, body, { headers: { 'X-App-Id': app.app_id } })
     if (currentRequest !== searchRequestId) return
     const workspaceNames = new Map(workspaces.map(workspace => [workspace.id, workspace.name]))

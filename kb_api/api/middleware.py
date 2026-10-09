@@ -1,6 +1,10 @@
 from contextvars import ContextVar
 from uuid import uuid4
 
+from fastapi import HTTPException, Request
+
+from kb_api.api.auth import authenticate_request
+
 
 _request_trace_id: ContextVar[str | None] = ContextVar("request_trace_id", default=None)
 
@@ -33,6 +37,22 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send_response)
         finally:
             _request_trace_id.reset(token)
+
+
+class AuthenticationMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        request = Request(scope)
+        if request.headers.get("Authorization") or request.headers.get("X-API-Key"):
+            try:
+                scope.setdefault("state", {})["principal"] = authenticate_request(request)
+            except HTTPException as exc:
+                scope.setdefault("state", {})["authentication_error"] = (exc.status_code, exc.detail)
+        await self.app(scope, receive, send)
 
 
 def install_request_id_middleware(app, *, service_name: str) -> None:

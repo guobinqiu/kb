@@ -47,6 +47,8 @@ def test_process_index_task_indexes_file_in_app_scope_with_workspace_metadata(mo
             app_id="imsdom",
             workspace_id="2f59393d-41b8-4cab-8bbd-2aee2e7c7234",
             file_id="file-1",
+            task_id="task-1",
+            callback_token="callback-token",
             s3_url="s3://rag/file.pdf",
             filename="file.pdf",
         ),
@@ -63,6 +65,8 @@ def test_process_index_task_indexes_file_in_app_scope_with_workspace_metadata(mo
     assert result == {
         "operation": "index",
         "file_id": "file-1",
+        "task_id": "task-1",
+        "callback_token": "callback-token",
         "success": True,
         "status": "indexed",
         "error": None,
@@ -85,6 +89,8 @@ def test_process_delete_task_deletes_file_in_app_scope():
             app_id="imsdom",
             workspace_id="workspace-1",
             file_id="file-1",
+            task_id="task-1",
+            callback_token="callback-token",
         ),
     )
 
@@ -93,6 +99,8 @@ def test_process_delete_task_deletes_file_in_app_scope():
     assert result == {
         "operation": "delete",
         "file_id": "file-1",
+        "task_id": "task-1",
+        "callback_token": "callback-token",
         "success": True,
         "status": "deleted",
         "error": None,
@@ -109,6 +117,8 @@ def test_index_task_requires_storage_fields():
             app_id="imsdom",
             workspace_id="workspace-1",
             file_id="file-1",
+            task_id="task-1",
+            callback_token="callback-token",
         )
 
 
@@ -132,11 +142,15 @@ def test_task_result_preserves_retryable_error(monkeypatch):
         "app_id": "imsdom",
         "workspace_id": "workspace-1",
         "file_id": "file-1",
+        "task_id": "task-1",
+        "callback_token": "callback-token",
     })
 
     assert result == {
         "operation": "delete",
         "file_id": "file-1",
+        "task_id": "task-1",
+        "callback_token": "callback-token",
         "success": False,
         "status": "delete_failed",
         "error": {
@@ -183,9 +197,15 @@ def test_business_app_id_maps_to_vector_collection_name():
 
 def test_task_requires_workspace_identity():
     with pytest.raises(ValueError, match="workspace_id is required"):
-        IndexTask.from_dict({"operation": "delete", "app_id": "imsdom", "file_id": "file-1"})
+        IndexTask.from_dict({
+            "operation": "delete", "app_id": "imsdom", "file_id": "file-1",
+            "task_id": "task-1", "callback_token": "callback-token",
+        })
     with pytest.raises(ValueError, match="app_id is required"):
-        IndexTask.from_dict({"operation": "delete", "workspace_id": "workspace-1", "file_id": "file-1"})
+        IndexTask.from_dict({
+            "operation": "delete", "workspace_id": "workspace-1", "file_id": "file-1",
+            "task_id": "task-1", "callback_token": "callback-token",
+        })
 
 
 def test_task_message_uses_app_and_workspace_without_workspace_key():
@@ -194,6 +214,8 @@ def test_task_message_uses_app_and_workspace_without_workspace_key():
         "app_id": "imsdom",
         "workspace_id": "workspace-1",
         "file_id": "file-1",
+        "task_id": "task-1",
+        "callback_token": "callback-token",
     })
 
     assert task.app_id == "imsdom"
@@ -210,4 +232,6 @@ def test_task_message_rejects_legacy_workspace_key():
             "workspace_id": "workspace-1",
             "workspace_key": "legacy_workspace",
             "file_id": "file-1",
+            "task_id": "task-1",
+            "callback_token": "callback-token",
         })

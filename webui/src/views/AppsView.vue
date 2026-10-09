@@ -83,7 +83,7 @@ const newAppId = ref('')
 const creating = ref(false)
 const appsReady = ref(false)
 function selectApp(app) {
-  const id = app?.id ?? app?.app_id
+  const id = app?.app_id
   if (!id) return
   activeAppStore.appId = id
   router.push(`/apps/${id}/workspaces`)
@@ -113,7 +113,7 @@ async function createApp() {
 }
 
 async function deleteApp(app) {
-  const id = app?.id ?? app?.app_id
+  const id = app?.app_id
   const name = app?.name ?? app?.app_id
   if (!id) return
   try {
@@ -137,7 +137,7 @@ onMounted(async () => {
 })
 watch([currentUser, apps, appsReady], ([user, available, ready]) => {
   if (!ready || !user || user.role === 'owner' || !available.length) return
-  const id = available[0].id ?? available[0].app_id
+  const id = available[0].app_id
   router.replace(`/apps/${id}/workspaces`)
 }, { immediate: true })
 </script>

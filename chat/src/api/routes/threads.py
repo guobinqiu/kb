@@ -3,15 +3,15 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 from chat.src.agent.registry import get_checkpointer, get_graph
-from chat.src.api.auth import require_user_principal
+from chat.src.api.auth import principal_metadata, require_principal, scoped_thread_id
 from chat.src.api.middleware import limiter
 from chat.src.api.requests import ThreadId
 from chat.src.config import settings
 
 router = APIRouter(
-    prefix="/threads",
+    prefix="/api/v1/llm/threads",
     tags=["threads"],
-    dependencies=[Depends(require_user_principal)],
+    dependencies=[Depends(require_principal)],
 )
 
 
@@ -33,7 +33,11 @@ async def list_threads(request: Request):
     """列出所有对话线程，按最后更新时间倒序。"""
     checkpointer = get_checkpointer()
     threads: dict[str, ThreadSummary] = {}
-    async for checkpoint in checkpointer.alist(None, limit=1000):
+    async for checkpoint in checkpointer.alist(
+        None,
+        filter=principal_metadata(request.state.principal),
+        limit=1000,
+    ):
         thread_id = _checkpoint_thread_id(checkpoint)
         if not thread_id or thread_id in threads:
             continue
@@ -49,9 +53,8 @@ async def list_threads(request: Request):
 
 
 def _checkpoint_thread_id(checkpoint) -> str | None:
-    config = getattr(checkpoint, "config", None) or {}
-    configurable = config.get("configurable") or {}
-    thread_id = configurable.get("thread_id")
+    metadata = getattr(checkpoint, "metadata", None) or {}
+    thread_id = metadata.get("external_thread_id")
     return str(thread_id) if thread_id else None
 
 
@@ -76,7 +79,7 @@ async def delete_thread(request: Request, thread_id: ThreadId):
     delete_thread_func = getattr(checkpointer, "adelete_thread", None)
     if not callable(delete_thread_func):
         return {"deleted": False, "thread_id": thread_id}
-    await delete_thread_func(thread_id)
+    await delete_thread_func(scoped_thread_id(request.state.principal, thread_id))
 
     return {"deleted": True, "thread_id": thread_id}
 
@@ -85,14 +88,14 @@ def _chat_graph():
     return get_graph("chat")
 
 
-@router.get("/{thread_id}/history")
+@router.get("/{thread_id}/messages")
 @limiter.limit(settings.rate_limit_history)
 async def get_history(request: Request, thread_id: ThreadId, graph=Depends(_chat_graph)):  # noqa: B008
     """获取指定对话的消息历史。
 
     B008：FastAPI 框架强制要求 Depends() 在参数默认位置（C 端解析依赖图）。
     """
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": scoped_thread_id(request.state.principal, thread_id)}}
     state = await graph.aget_state(config)
 
     if not state.values:

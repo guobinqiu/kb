@@ -14,8 +14,8 @@ def _require_owner(user: dict) -> None:
 
 def _can_access_app(dao, user: dict, app_id: str) -> bool:
     if user["role"] == "owner":
-        return dao.get_app(app_id) is not None
-    return any(app["id"] == app_id for app in dao.list_apps(user["org_id"]))
+        return dao.get_app_by_business_id(app_id) is not None
+    return any(app["app_id"] == app_id for app in dao.list_apps(user["org_id"]))
 
 
 def _visible_app(dao, user: dict, app: dict) -> dict:
@@ -54,14 +54,15 @@ def get_app(app_id: str, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     if not _can_access_app(dao, user, app_id):
         raise HTTPException(status_code=404, detail="App not found")
-    return _visible_app(dao, user, dao.get_app(app_id))
+    return _visible_app(dao, user, dao.get_app_by_business_id(app_id))
 
 
-@router.put("/{app_id}")
+@router.patch("/{app_id}")
 def update_app(app_id: str, body: AppUpdate, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     _require_owner(user)
-    app = dao.update_app(app_id, body.name)
+    existing = dao.get_app_by_business_id(app_id)
+    app = dao.update_app(existing["id"], body.name) if existing else None
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
     return app
@@ -71,18 +72,18 @@ def update_app(app_id: str, body: AppUpdate, request: Request, user=Depends(curr
 def delete_app(app_id: str, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     _require_owner(user)
-    app = dao.get_app(app_id)
+    app = dao.get_app_by_business_id(app_id)
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
-    if dao.list_workspaces(app_id):
+    if dao.list_workspaces(app["id"]):
         raise HTTPException(status_code=409, detail="App contains workspaces")
-    if dao.has_app_orgs(app_id):
+    if dao.has_app_orgs(app["id"]):
         raise HTTPException(status_code=409, detail="App contains orgs")
     vector = _vector(request)
     if vector is not None:
         vector.drop_app_collection(app["app_id"])
     try:
-        deleted = dao.delete_app(app_id)
+        deleted = dao.delete_app(app["id"])
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:

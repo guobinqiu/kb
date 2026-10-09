@@ -56,7 +56,7 @@ const llmChatStore = useLlmChatStore()
 const { apps } = storeToRefs(appsStore)
 
 const currentAppId = computed(() => route.params.app_id)
-const currentApp = computed(() => apps.value.find(app => (app.id ?? app.app_id) === currentAppId.value))
+const currentApp = computed(() => apps.value.find(app => app.app_id === currentAppId.value))
 const scopeKey = computed(() => currentAppId.value)
 const session = computed(() => llmChatStore.sessionFor(scopeKey.value))
 const threadId = computed(() => session.value.threadId)

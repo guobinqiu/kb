@@ -52,7 +52,7 @@ App 是企业及数据隔离边界，下有一套组织树、多个工作区。�
 
 | 接口 | 含义 |
 | --- | --- |
-| GET /api/v1/apps/{app_id}/workspaces | 可访问工作区列表及创建权限；每个工作区带 role、permissions |
+| GET /api/v1/apps/{app_id}/workspaces | 按业务 app_id 查询可访问工作区列表及创建权限；每个工作区带 role、permissions |
 | GET /api/v1/workspaces/{id} | 当前工作区、有效 role、permissions |
 | GET /api/v1/workspaces/{id}/members | 授权来源列表，区分 user/org |
 | POST /api/v1/workspaces/{id}/members | 新增或覆盖授权，body 为 type/id/role |

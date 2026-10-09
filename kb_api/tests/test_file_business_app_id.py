@@ -11,7 +11,7 @@ def test_file_index_and_delete_tasks_use_business_app_id(system):
     assert app_response.status_code == 201
     app = app_response.json()["app"]
     workspace = client.post(
-        f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Documents"}, headers=headers,
+        f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Documents"}, headers=headers,
     ).json()["workspace"]
     record = upload_file(system, workspace_id=workspace["id"], filename="a.txt")
     queue_name, task = system["queue"].messages[-1]

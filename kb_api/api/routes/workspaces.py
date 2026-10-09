@@ -48,29 +48,30 @@ def _managed_workspace(dao, workspace_id: str, user: dict) -> dict:
 @apps_router.get("/{app_id}/workspaces")
 def list_workspaces(app_id: str, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
-    app = dao.get_app(app_id)
+    app = dao.get_app_by_business_id(app_id)
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
     org = dao.get_org(user["org_id"]) if user.get("org_id") else None
-    if user["role"] != "owner" and (not org or org["app_id"] != app_id):
+    if user["role"] != "owner" and (not org or org["app_id"] != app["id"]):
         raise HTTPException(status_code=404, detail="App not found")
-    workspaces = dao.list_workspaces(app_id)
+    workspaces = dao.list_workspaces(app["id"])
     workspaces = [
         {**item, "role": dao.get_workspace_role(user, item["id"]),
          "permissions": workspace_permissions(dao, user, item)}
         for item in workspaces if dao.has_workspace_access(user, item["id"])
     ]
-    return {"workspaces": workspaces, "permissions": {WORKSPACE_CREATE: can_create_workspace(dao, user, app_id)}}
+    return {"workspaces": workspaces, "permissions": {WORKSPACE_CREATE: can_create_workspace(dao, user, app["id"])}}
 
 
 @apps_router.post("/{app_id}/workspaces", status_code=status.HTTP_201_CREATED)
 def create_workspace(app_id: str, body: WorkspaceCreate, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
-    if not dao.get_app(app_id):
+    app = dao.get_app_by_business_id(app_id)
+    if not app:
         raise HTTPException(status_code=404, detail="App not found")
-    if not can_create_workspace(dao, user, app_id):
+    if not can_create_workspace(dao, user, app["id"]):
         raise HTTPException(status_code=403, detail="Workspace creation denied")
-    return {"workspace": dao.create_workspace(app_id, body.name, creator_id=user["id"])}
+    return {"workspace": dao.create_workspace(app["id"], body.name, creator_id=user["id"])}
 
 
 @router.get("/{workspace_id}")
@@ -81,7 +82,7 @@ def get_workspace(workspace_id: str, request: Request, user=Depends(current_user
             "permissions": workspace_permissions(dao, user, workspace)}
 
 
-@router.put("/{workspace_id}")
+@router.patch("/{workspace_id}")
 def update_workspace(workspace_id: str, body: WorkspaceUpdate, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     workspace = _workspace(dao, workspace_id, user)

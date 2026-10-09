@@ -24,9 +24,6 @@ def main() -> None:
     rabbitmq_url = os.getenv("RABBITMQ_URL", "").strip()
     if not rabbitmq_url:
         raise ValueError("RABBITMQ_URL is required")
-    service_api_key = os.getenv("SERVICE_API_KEY", "").strip()
-    if not service_api_key:
-        raise ValueError("SERVICE_API_KEY is required")
     config = load_app_config()
     state = _build_state(config)
     try:
@@ -36,7 +33,6 @@ def main() -> None:
             task_queue=os.getenv("INDEX_TASK_QUEUE", "kb.index.tasks"),
             callback_url=config.indexer.callback.url,
             callback_timeout=config.indexer.callback.timeout,
-            service_api_key=service_api_key,
         )
 
         def stop(_signum, _frame):

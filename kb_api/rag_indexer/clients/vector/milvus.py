@@ -135,7 +135,7 @@ class MilvusVectorClient:
             collection_name=self._chunks_collection(),
             filter=self.build_count_filter(file_ids),
             output_fields=["count(*)"],
-            timeout=self._timeout_value(self.query_timeout),
+            **self._query_request_options(),
         )
         if not rows:
             return 0
@@ -150,9 +150,9 @@ class MilvusVectorClient:
             collection_name=self._chunks_collection(),
             filter=metadata_filter,
             output_fields=["*"],
-            timeout=self._timeout_value(self.query_timeout),
             limit=limit + 1,
             order_by=_chunk_order_by(),
+            **self._query_request_options(),
         )
         page_rows = rows[:limit]
         return {
@@ -384,7 +384,7 @@ class MilvusVectorClient:
             limit=limit,
             filter=metadata_filter,
             output_fields=["*"],
-            timeout=self._timeout_value(self.query_timeout),
+            **self._query_request_options(),
         )
 
     def _query_chunk_vectors(self, chunk_id: str, fields: list[str]) -> list[dict]:
@@ -393,7 +393,7 @@ class MilvusVectorClient:
             collection_name=self._chunks_collection(),
             ids=[chunk_id],
             output_fields=fields,
-            timeout=self._timeout_value(self.query_timeout),
+            **self._query_request_options(),
         )
 
     def _to_file_rows(self, chunks: list[dict], file_id: str) -> list[dict]:

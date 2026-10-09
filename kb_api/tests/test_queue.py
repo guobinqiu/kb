@@ -13,17 +13,27 @@ def _upload(system):
         "/api/v1/apps", json={"name": "Queue Test", "app_id": "queue_test"}, headers=system["headers"]
     ).json()["app"]
     workspace = system["client"].post(
-        f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Queue Test"}, headers=system["headers"]
+        f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Queue Test"}, headers=system["headers"]
     ).json()["workspace"]
     return upload_file(system, workspace_id=workspace["id"], filename="queue.txt", data=b"data")
+
+
+def _result(system, record, **values):
+    task = system["queue"].messages[-1][1]
+    return {
+        "operation": task["operation"],
+        "file_id": record["id"],
+        "task_id": task["task_id"],
+        "callback_token": task["callback_token"],
+        **values,
+    }
 
 
 def test_index_result_api_applies_success(system):
     record = _upload(system)
     response = system["client"].post(
         "/api/v1/index-results",
-        json={"operation": "index", "file_id": record["id"], "status": "indexed", "indexed_at": "2026-09-22T12:00:00+00:00", "error": None},
-        headers=system["service_headers"],
+        json=_result(system, record, status="indexed", indexed_at="2026-09-22T12:00:00+00:00", error=None),
     )
     assert response.status_code == 204, response.text
     stored = system["dao"].get_file(record["id"])
@@ -37,8 +47,7 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
     error = {"error": "parse failed", "service": "parser", "retryable": False, "traceId": "a" * 32}
     response = system["client"].post(
         "/api/v1/index-results",
-        json={"operation": "index", "file_id": record["id"], "status": "failed", "error": error, "indexed_at": None},
-        headers=system["service_headers"],
+        json=_result(system, record, status="failed", error=error, indexed_at=None),
     )
     assert response.status_code == 204, response.text
     failed = system["dao"].get_file(record["id"])
@@ -49,8 +58,7 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
     system["client"].delete(f"/api/v1/workspaces/{record['workspace_id']}/files/{record['id']}", headers=system["headers"])
     response = system["client"].post(
         "/api/v1/index-results",
-        json={"operation": "delete", "file_id": record["id"], "status": "deleted", "error": None, "indexed_at": None},
-        headers=system["service_headers"],
+        json=_result(system, record, status="deleted", error=None, indexed_at=None),
     )
     assert response.status_code == 204, response.text
     deleted = system["dao"].get_file(record["id"], include_deleted=True)
@@ -58,12 +66,39 @@ def test_index_result_api_updates_failure_and_delete_success_soft_deletes(system
     assert record["s3_url"] in system["storage"].deleted
 
 
-def test_index_result_api_rejects_user_token(system):
+def test_index_result_api_rejects_invalid_callback_token(system):
     record = _upload(system)
+    payload = _result(system, record, status="indexed")
+    payload["callback_token"] = "invalid"
     response = system["client"].post(
         "/api/v1/index-results",
-        json={"operation": "index", "file_id": record["id"], "status": "indexed"},
+        json=payload,
+    )
+
+    assert response.status_code == 401
+
+
+def test_old_index_task_cannot_overwrite_newer_file_state(system):
+    record = _upload(system)
+    old_task = dict(system["queue"].messages[-1][1])
+    workspace_id = record["workspace_id"]
+    system["storage"].objects[record["s3_url"]] = b"changed"
+    response = system["client"].post(
+        f"/api/v1/workspaces/{workspace_id}/files/{record['id']}/complete",
+        json={"s3_url": record["s3_url"], "filename": record["filename"]},
         headers=system["headers"],
+    )
+    assert response.status_code == 202
+
+    response = system["client"].post(
+        "/api/v1/index-results",
+        json={
+            "operation": old_task["operation"],
+            "file_id": record["id"],
+            "task_id": old_task["task_id"],
+            "callback_token": old_task["callback_token"],
+            "status": "indexed",
+        },
     )
 
     assert response.status_code == 401

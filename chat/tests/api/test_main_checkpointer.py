@@ -24,9 +24,10 @@ async def test_create_checkpointer_falls_back_to_memory(monkeypatch):
 
     monkeypatch.setattr(main, "AsyncConnectionPool", FailingPool)
 
-    resource, checkpointer = await main._create_checkpointer()
+    resource, checkpointer, auth_pool = await main._create_checkpointer()
 
     assert isinstance(checkpointer, MemorySaver)
+    assert auth_pool is None
     await resource.__aexit__(None, None, None)
 
 
@@ -62,9 +63,10 @@ async def test_create_checkpointer_uses_checked_connection_pool(monkeypatch):
     monkeypatch.setattr(main, "AsyncConnectionPool", WorkingPool)
     monkeypatch.setattr(main, "AsyncPostgresSaver", Saver)
 
-    resource, checkpointer = await main._create_checkpointer()
+    resource, checkpointer, auth_pool = await main._create_checkpointer()
 
     assert checkpointer.conn.conninfo == main.settings.database_url
+    assert auth_pool is checkpointer.conn
     assert checkpointer.conn.kwargs["check"] is WorkingPool.check_connection
     assert checkpointer.conn.kwargs["open"] is False
     assert checkpointer.conn.kwargs["kwargs"]["autocommit"] is True

@@ -1,9 +1,21 @@
+import time
 import uuid
 
 import pytest
 
 
 pytestmark = pytest.mark.integration
+
+
+def _eventually(operation, predicate, timeout: float = 10.0):
+    deadline = time.monotonic() + timeout
+    while True:
+        result = operation()
+        if predicate(result):
+            return result
+        if time.monotonic() >= deadline:
+            return result
+        time.sleep(0.2)
 
 
 def _chunk(filename: str, content: str, chunk_index: int = 0, chunk_id: str | None = None) -> dict:
@@ -38,7 +50,10 @@ class TestMilvusVectorClientIntegration:
             file_id=file_id,
         )
 
-        docs = vector.list_chunks(file_ids=[file_id])["documents"]
+        docs = _eventually(
+            lambda: vector.list_chunks(file_ids=[file_id])["documents"],
+            lambda items: len(items) == 1 and items[0]["content"] == "第二版知识 0",
+        )
         assert len(docs) == 1
         assert docs[0]["id"] == chunks[0]["id"]
         assert docs[0]["content"] == "第二版知识 0"
@@ -95,9 +110,13 @@ class TestMilvusVectorClientIntegration:
             file_id=file_id,
         )
 
-        results = vector.search_dense("人工智能", 2, vector.build_file_filter([file_id]))
+        results = _eventually(
+            lambda: vector.search_dense("人工智能", 2, vector.build_file_filter([file_id])),
+            bool,
+        )
         assert results
         assert {result["metadata"]["file_id"] for result in results} == {file_id}
 
         assert vector.delete_file_chunks(file_id) == 2
-        assert vector.get_total_chunks([file_id]) == 0
+        remaining = _eventually(lambda: vector.get_total_chunks([file_id]), lambda count: count == 0)
+        assert remaining == 0

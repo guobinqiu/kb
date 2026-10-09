@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from kb_api.api.auth import hash_password
 from kb_api.api.config import Settings, load_api_limits
+from kb_api.api.middleware import AuthenticationMiddleware
 from kb_api.api.services.rabbitmq import RabbitMQClient
 from kb_api.api.dao import PostgresDAO
 from kb_api.api.routes.apps import router as apps_router
@@ -28,6 +30,42 @@ from kb_api.logging_config import configure_logging, log_request_error
 
 
 logger = logging.getLogger("kb_api")
+
+
+def _install_openapi(application: FastAPI) -> None:
+    def openapi():
+        if application.openapi_schema is not None:
+            return application.openapi_schema
+        schema = get_openapi(title=application.title, version=application.version, routes=application.routes)
+        schema.setdefault("components", {})["securitySchemes"] = {
+            "BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+            "AppId": {"type": "apiKey", "in": "header", "name": "X-App-Id"},
+            "AppApiKey": {"type": "apiKey", "in": "header", "name": "X-API-Key"},
+        }
+        public = {("/health", "get"), ("/api/v1/auth/login", "post")}
+        app_access = {
+            ("/api/v1/rag/search", "post"),
+            ("/api/v1/rag/config", "get"),
+        }
+        for path, operations in schema["paths"].items():
+            for method, operation in operations.items():
+                if method not in {"get", "post", "put", "patch", "delete"}:
+                    continue
+                if (path, method) in public:
+                    operation["security"] = []
+                elif path == "/api/v1/index-results":
+                    operation["security"] = []
+                elif (path, method) in app_access:
+                    operation["security"] = [
+                        {"BearerAuth": [], "AppId": []},
+                        {"AppApiKey": [], "AppId": []},
+                    ]
+                else:
+                    operation["security"] = [{"BearerAuth": []}]
+        application.openapi_schema = schema
+        return schema
+
+    application.openapi = openapi
 
 
 def _error_detail(detail) -> str:
@@ -113,7 +151,6 @@ def create_app(
     vector=None,
     settings: Settings | None = None,
     token_secret: str | None = None,
-    service_api_key: str | None = None,
     initialize: bool = True,
 ) -> FastAPI:
     config = settings or Settings.from_env()
@@ -162,6 +199,7 @@ def create_app(
     configure_logging()
     application = FastAPI(title="KB API", version="0.1.0", lifespan=lifespan)
     install_search_tracing(application, service_name="kb_api")
+    application.add_middleware(AuthenticationMiddleware)
     application.add_exception_handler(UpstreamServiceError, _upstream_exception)
     application.add_exception_handler(HTTPException, _http_exception)
     application.add_exception_handler(RequestValidationError, _validation_exception)
@@ -170,7 +208,6 @@ def create_app(
     application.state.storage = storage
     application.state.queue = queue
     application.state.token_secret = token_secret or config.token_secret
-    application.state.service_api_key = service_api_key or config.service_api_key
     application.state.token_ttl_seconds = config.token_ttl_seconds
     application.state.api_limits = load_api_limits()
     if provided_search_service is not None:
@@ -188,6 +225,7 @@ def create_app(
     application.include_router(workspaces_router)
     application.include_router(files_router)
     application.include_router(search_router)
+    _install_openapi(application)
     return application
 
 

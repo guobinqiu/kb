@@ -138,10 +138,15 @@ CREATE TABLE IF NOT EXISTS files (
     updated_at TIMESTAMPTZ NOT NULL,
     indexed_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ,
+    index_task_id UUID,
+    index_callback_token_hash TEXT,
     CONSTRAINT files_status_check CHECK (
         status IN ('uploaded', 'indexing', 'indexed', 'failed', 'deleting', 'delete_failed')
     )
 );
+
+ALTER TABLE files ADD COLUMN IF NOT EXISTS index_task_id UUID;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS index_callback_token_hash TEXT;
 
 CREATE INDEX IF NOT EXISTS orgs_parent_id_idx ON orgs(parent_id);
 CREATE INDEX IF NOT EXISTS orgs_app_id_idx ON orgs(app_id);

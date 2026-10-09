@@ -120,18 +120,3 @@ class OrgsDAO(BaseDAO):
 
     def delete_org(self, org_id: str) -> bool:
         return self._execute("UPDATE orgs SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND parent_id IS NOT NULL", (org_id,))
-
-    def purge_org(self, org_id: str) -> bool:
-        with self._connect() as connection:
-            org = connection.execute(
-                "SELECT id FROM orgs WHERE id = %s AND parent_id IS NOT NULL AND deleted_at IS NOT NULL",
-                (org_id,),
-            ).fetchone()
-            if not org:
-                return False
-            if connection.execute("SELECT id FROM orgs WHERE parent_id = %s", (org_id,)).fetchone():
-                return False
-            if connection.execute("SELECT id FROM users WHERE org_id = %s", (org_id,)).fetchone():
-                return False
-            connection.execute("DELETE FROM workspace_org WHERE org_id = %s", (org_id,))
-            return connection.execute("DELETE FROM orgs WHERE id = %s", (org_id,)).rowcount > 0

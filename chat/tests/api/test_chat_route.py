@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import json
-from hashlib import sha256
 
 import httpx
 import pytest
@@ -20,7 +19,7 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 import chat.src.api.auth as auth_mod
-from chat.src.api.auth import AppCredential, get_current_authorization
+from chat.src.api.auth import AppCredential, Principal, get_current_authorization, scoped_thread_id
 from chat.src.api.middleware import limiter
 from chat.src.api.routes.chat import ChatRequest, chat_stream
 
@@ -43,13 +42,15 @@ def route_request(monkeypatch):
         "get_current_credential",
         lambda: AppCredential(app_id="", api_key="", user_id="user-1"),
     )
-    return Request({
+    request = Request({
         "type": "http",
         "method": "POST",
         "path": "/api/v1/llm/chat/stream",
         "headers": [],
         "client": ("127.0.0.1", 1234),
     })
+    request.state.principal = Principal(type="user", app_id="", user_id="user-1")
+    return request
 
 
 # ────────────────────────── 流式 /api/v1/llm/chat/stream ──────────────────────────
@@ -130,7 +131,15 @@ async def test_chat_stream_emits_token_done_events(route_request, monkeypatch):
     class _Graph:
         async def astream(self, input_data, config=None, stream_mode=None):
             assert input_data["messages"][0].content == "refund?"
-            assert config == {"configurable": {"thread_id": sha256(b":user-1:t1").hexdigest()}}
+            assert config == {
+                "configurable": {"thread_id": scoped_thread_id(route_request.state.principal, "t1")},
+                "metadata": {
+                    "app_id": "",
+                    "principal_type": "user",
+                    "principal_id": "user-1",
+                    "external_thread_id": "t1",
+                },
+            }
             assert stream_mode == ["custom"]
 
             async def _producer():
@@ -199,11 +208,7 @@ async def test_chat_stream_isolates_same_thread_for_different_users(route_reques
             yield ("custom", {"type": "token", "content": "ok"})
 
     for user_id in ("user-1", "user-2"):
-        monkeypatch.setattr(
-            auth_mod,
-            "get_current_credential",
-            lambda user_id=user_id: AppCredential(app_id="acme", api_key="", user_id=user_id),
-        )
+        route_request.state.principal = Principal(type="user", app_id="acme", user_id=user_id)
         response = await chat_stream(route_request, ChatRequest(message="hi", thread_id="t1", workspace_ids=["ws-1"]), graph=_Graph())
         _ = [chunk async for chunk in response.body_iterator]
 

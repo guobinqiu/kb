@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn",
     "tenacity",
     "pydantic-settings",
+    "PyJWT>=2.10,<3",
     "psycopg[binary,pool]>=3.2.0",
     "slowapi",
     "httpx",

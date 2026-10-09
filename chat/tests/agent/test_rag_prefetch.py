@@ -34,6 +34,8 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
             captured["query"] = req.query
             captured["top_k"] = req.top_k
             captured["rerank"] = req.rerank
+            captured["app_id"] = kwargs["app_id"]
+            captured["api_key"] = kwargs["api_key"]
             return type("R", (), {
                 "success": True, "status_code": 200,
                 "documents": [
@@ -59,6 +61,8 @@ async def test_rag_prefetch_calls_client_with_query(monkeypatch):
     assert captured["query"] == "怎么退款？"
     assert captured["top_k"] == 5
     assert captured["rerank"] is False
+    assert captured["app_id"] == "imsdom"
+    assert captured["api_key"] == "test-api-key"
     assert "测试内容" in result["rag_context"]
 
 

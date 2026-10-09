@@ -11,6 +11,9 @@ class FilesDAO(BaseDAO):
         result = BaseDAO._record(row)
         if result is not None and result.get("error") is not None:
             result["error"] = json.loads(result["error"])
+        if result is not None:
+            result.pop("index_task_id", None)
+            result.pop("index_callback_token_hash", None)
         return result
 
     def create_file(self, **values) -> dict:
@@ -43,5 +46,26 @@ class FilesDAO(BaseDAO):
             "SELECT * FROM files WHERE id = %s", (file_id,),
         )
 
-    def apply_file_result(self, file_id: str, *, status: str, error, indexed_at, deleted: bool = False) -> dict | None:
-        return self.update_file(file_id, status=status, error=error, indexed_at=indexed_at, deleted_at=_now() if deleted else None)
+    def apply_file_result(
+        self, file_id: str, *, task_id: str, token_hash: str,
+        status: str, error, indexed_at, deleted: bool = False,
+    ) -> bool:
+        return self._execute(
+            "UPDATE files SET status = %s, error = %s, indexed_at = %s, deleted_at = %s, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = %s AND index_task_id = %s AND index_callback_token_hash = %s",
+            (
+                status,
+                json.dumps(error) if error is not None else None,
+                indexed_at,
+                _now() if deleted else None,
+                file_id,
+                task_id,
+                token_hash,
+            ),
+        )
+
+    def set_file_index_task(self, file_id: str, *, task_id: str, token_hash: str) -> None:
+        self._execute(
+            "UPDATE files SET index_task_id = %s, index_callback_token_hash = %s WHERE id = %s",
+            (task_id, token_hash, file_id),
+        )

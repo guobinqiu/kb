@@ -62,13 +62,13 @@ flowchart LR
             Postgres[(postgres)]
             RabbitMQ[(rabbitmq)]
             MinIO[(minio)]
-            TEI["tei_dense / tei_rerank"]
-            MinerU["mineru-api-server"]
-            VLM["mineru-vlm-server"]
             Collector["otel-collector"]
             Jaeger["jaeger"]
         end
 
+        TEI["TEI :8081 / :8082"]
+        MinerU["MinerU API :18002"]
+        VLM["MinerU VLM"]
         Data["宿主机数据目录"]
     end
 
@@ -96,7 +96,7 @@ flowchart LR
     MinIO --> Data
 ```
 
-`webui` 是独立镜像，构建阶段生成静态资源，运行阶段由镜像内的 Nginx 托管并透明代理 KB API 与 Chat。KB API、Indexer、Chat 和基础服务分别由独立 Compose 项目启动，共用外部网络 `kb-net`。图中是当前使用 ParadeDB/PostgreSQL、本地 MinerU/TEI 和 OpenRouter 的部署；Qdrant、Milvus、etcd 不在默认启动范围内。
+`webui` 是独立镜像，构建阶段生成静态资源，运行阶段由镜像内的 Nginx 托管并透明代理 KB API 与 Chat。KB API、Indexer、Chat 和基础服务分别由独立 Compose 项目启动，共用外部网络 `kb-net`。当前 `rag.yaml` 通过宿主机地址访问 233 上已有的 MinerU 和 TEI；这些模型服务也可以改为其他远程地址。Qdrant、Milvus、etcd 不在默认启动范围内。
 
 ## 身份与数据范围
 
@@ -110,7 +110,7 @@ App（企业）
     └── workspace_org.org_id  → orgs.id（部门授权，运行时匹配直属用户）
 ```
 
-每个 App 有一棵独立组织树和多个 workspace。界面从当前 App 根组织向下展示完整树，但看到组织不等于能管理它。平台 `owner` 不挂组织；企业 `admin` 和 `member` 通过 `users.org_id` 归属组织。用户登录名使用 `name`。KB API 与 Chat 使用同一个签名密钥各自验证用户 Token，不信任客户端提交的身份 Header。
+每个 App 有一棵独立组织树和多个 workspace。界面从当前 App 根组织向下展示完整树，但看到组织不等于能管理它。平台 `owner` 不挂组织；企业 `admin` 和 `member` 通过 `users.org_id` 归属组织。用户登录名使用 `name`。KB API 使用 HS256 签发 JWT 用户 Token，KB API 与 Chat 使用同一个 `JWT_SECRET` 验证该 Token，不信任客户端提交的身份 Header。
 
 ### 企业身份
 
@@ -165,7 +165,7 @@ sequenceDiagram
     WebUI->>KBAPI: POST /files/{file_id}/complete
     KBAPI->>MinIO: 确认对象存在并计算 checksum
     KBAPI->>RDB: 创建或更新 workspace 文件记录
-    KBAPI->>MQ: 发布含 workspace_id 的索引任务
+    KBAPI->>MQ: 发布含 workspace_id 和任务回调凭证的索引任务
     KBAPI-->>WebUI: 202 索引中
 
     MQ->>Indexer: 下发索引任务
@@ -179,9 +179,9 @@ sequenceDiagram
     Inference-->>Indexer: 返回向量
     Indexer->>VDB: 写入索引
     VDB-->>Indexer: 写入结果
-    Indexer->>KBAPI: HTTP 回写索引结果
+    Indexer->>KBAPI: 使用 task_id 和 callback_token 回写结果
     KBAPI->>RDB: 更新文件状态
-    Indexer-->>MQ: basic.ack
+    Indexer-->>MQ: 回写成功后 basic.ack
 ```
 
 ### 聊天与检索

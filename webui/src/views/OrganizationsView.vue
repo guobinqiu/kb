@@ -16,7 +16,6 @@
         <el-button :disabled="!canManage || isOrgInactive(selectedOrg.id)" :icon="Edit" @click="openEdit(selectedOrg)">{{ t('common.edit') }}</el-button>
         <el-button v-if="selectedOrg.deleted_at" :disabled="!canManage" :icon="RefreshLeft" :loading="deletingId === selectedOrg.id" @click="restoreOrg(selectedOrg)">{{ t('common.restore') }}</el-button>
         <el-button v-else :icon="Delete" type="danger" plain :disabled="!canManage || !selectedOrg.parent_id || isOrgInactive(selectedOrg.parent_id) || selectedOrg.id === currentUser?.org_id" :loading="deletingId === selectedOrg.id" @click="deleteOrg(selectedOrg)">{{ t('common.disable') }}</el-button>
-        <el-button :disabled="!canManage || !selectedOrg.deleted_at || !selectedOrg.parent_id" :icon="Delete" type="danger" plain :loading="deletingId === selectedOrg.id" @click="purgeEmptyOrg(selectedOrg)">{{ t('common.deletePermanently') }}</el-button>
       </div>
     </div>
 
@@ -57,7 +56,7 @@ import { ArrowRight, Delete, Edit, OfficeBuilding, Plus, RefreshLeft } from '@el
 import SectionHeader from '../components/SectionHeader.vue'
 import DialogActions from '../components/DialogActions.vue'
 import { useAuthStore } from '../stores/auth'
-import { createOrg, getOrgs, purgeOrg, removeOrg, updateOrg } from '../utils/kbApi'
+import { createOrg, getOrgs, removeOrg, updateOrg } from '../utils/kbApi'
 import { confirmBox } from '../utils/messageBox'
 import { errorMessage, showToast } from '../utils/toast'
 import { buildOrgTree, isOrgInactive as orgIsInactive } from '../utils/organization'
@@ -143,25 +142,6 @@ async function restoreOrg(org) {
   try {
     await updateOrg(org.id, { deleted_at: null })
     showToast('success', t('organizations.restored', { name: org.name }))
-    await Promise.all([fetchOrgs(), refreshWorkspaceOrgs()])
-  } catch (err) {
-    showToast('error', errorMessage(err))
-  } finally {
-    deletingId.value = null
-  }
-}
-
-async function purgeEmptyOrg(org) {
-  try {
-    await confirmBox(t, t('organizations.purgeConfirm', { name: org.name }), t('common.deletePermanently'), { type: 'warning' })
-  } catch {
-    return
-  }
-  deletingId.value = org.id
-  try {
-    await purgeOrg(org.id)
-    showToast('success', t('organizations.purged', { name: org.name }))
-    await selectOrg(org.parent_id)
     await Promise.all([fetchOrgs(), refreshWorkspaceOrgs()])
   } catch (err) {
     showToast('error', errorMessage(err))

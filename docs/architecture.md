@@ -35,6 +35,19 @@ Indexer 位于 `kb_api/rag_indexer`，与 KB API 各自维护 `pyproject.toml`�
 
 每个 App 有且只有一棵 org 树，所有组织查询都从该 App 的根组织向下加载，不跨 App。平台 `owner` 不挂组织；`admin` 和 `member` 通过 `org_id` 归属当前 App 的组织。workspace 是知识库及文件的授权边界。`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。企业角色不隐式获得工作区内容权限。文件只关联 workspace，不关联 org。详见[工作区授权概要设计](workspace-authorization.md)。
 
+## 业务 SQL 原则
+
+这些原则适用于 `kb_api/api/dao` 中的 App、组织、用户、工作区和文件等业务数据访问：
+
+- DAO 按业务领域拆分，SQL 放在拥有对应数据操作的 DAO 中，不集中到全局 SQL 文件或跨领域工具类。
+- 单条 SQL 保持简单、参数化并可独立理解；显式列出读取和写入字段，不依赖字符串拼接传入业务值。
+- 多个查询结果的合并、组织树遍历和条件编排优先在 Python 中完成，不使用 `UNION`、递归 CTE 或复杂嵌套 SQL 表达应用流程。
+- 不使用 `FOR UPDATE` 实现常规业务互斥。当前业务不属于资金交易等必须悲观串行化的场景；唯一性由数据库约束保证，冲突由应用处理。
+- 一个业务动作包含多步写入时，共用同一个数据库连接并置于同一事务中；任一步失败时整体回滚。只读查询不人为扩大事务范围。
+- 先保持代码和事务边界清晰；只有性能数据证明存在瓶颈时，才针对具体查询增加索引、合并查询或采用数据库能力，并补充相应测试和说明。
+
+上述约束不要求所有数据库实现完全通用。项目当前仍使用 psycopg 和 PostgreSQL；初始化脚本、向量后端及 ParadeDB BM25 可以使用扩展、向量运算、索引语法等数据库专有能力，但这些实现不得渗入业务 DAO。
+
 ## RAG Indexer
 
 `rag_indexer` 只负责文档进入向量库之前的处理：
@@ -54,19 +67,21 @@ sequenceDiagram
     participant I as 文档向量模块
     participant V as VDB
     K->>Q: 发布索引任务
-    Q->>R: 下发 workspace、文件引用与 embedding 规格
+    Q->>R: 下发 workspace、文件引用与任务回调凭证
     R->>P: presigned URL 与文件名
     P-->>R: 文档块
     R->>R: 分片与来源关联
     R->>I: 文档文本列表
     I-->>R: 文档向量
     R->>V: 写入分片与向量
-    R->>K: 回写索引结果
+    R->>K: 使用任务回调凭证回写索引结果
 ```
 
 Parser 和文档向量模块与 Indexer 同进程调用，配置位于 `kb_api/config/rag.yaml`。外部调用按各自配置执行超时和重试。
 
-两入口统一使用 `KB_CONFIG_FILE` 指定配置路径，默认读取 `kb_api/config/rag.yaml`。`inference` 和 `vector_db` 共用；`search`、`api` 用于管理与检索，`parser`、`chunking`、`storage` 用于索引。Embedding 规格属于知识库元数据，不属于服务配置。KB API 保存每个知识库的 `provider`、`model` 和 `dimensions`，创建索引任务时传给 Indexer；同一知识库不能在不重建 collection 的情况下更换模型或维度。
+两入口统一使用 `KB_CONFIG_FILE` 指定配置路径，默认读取 `kb_api/config/rag.yaml`。`inference` 和 `vector_db` 共用；`search`、`api` 用于管理与检索，`parser`、`chunking`、`storage` 用于索引。当前所有知识库共用配置中启用的 dense provider、模型和维度；修改模型或维度后需要重建已有索引。
+
+KB API 为每个索引或删除任务生成独立的 `task_id` 和 `callback_token`，数据库只保存令牌摘要。Indexer 只有在使用当前任务凭证成功回写结果后才确认 RabbitMQ 消息；回写失败时消息重新入队。
 
 ## RAG Search
 

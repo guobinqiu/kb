@@ -54,11 +54,10 @@ def test_app_delete_with_orgs_preserves_users_and_references(system):
 def test_app_delete_rejects_top_level_org(system):
     dao = system["dao"]
     app, org = dao.create_app("Acme", "acme")
-    response = system["client"].delete(f"/api/v1/apps/{app['id']}", headers=system["headers"])
+    response = system["client"].delete(f"/api/v1/apps/{app['app_id']}", headers=system["headers"])
     assert response.status_code == 409
     assert response.json()["error"] == "App contains orgs"
     assert dao.get_org(org["id"]) == org
-
 
 def test_app_delete_with_workspace_preserves_orgs(system):
     dao = system["dao"]
@@ -68,16 +67,3 @@ def test_app_delete_with_workspace_preserves_orgs(system):
         dao.delete_app(app["id"])
     assert dao.get_app(app["id"]) == app
     assert dao.get_org(org["id"]) == org
-
-
-def test_empty_disabled_org_delete_cleans_workspace_grants(system):
-    dao = system["dao"]
-    app, org = dao.create_app("Acme", "acme")
-    branch = dao.create_org(app["id"], org["id"], "Branch")
-    workspace = dao.create_workspace(app["id"], "Policies")
-    dao.add_workspace_org(workspace["id"], org_id=branch["id"])
-    dao.delete_org(branch["id"])
-
-    assert dao.purge_org(branch["id"]) is True
-    assert dao.get_org(branch["id"]) is None
-    assert dao.list_workspace_members(workspace["id"]) == []

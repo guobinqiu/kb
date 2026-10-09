@@ -61,7 +61,7 @@ def test_workspace_creator_can_delete_but_other_admin_cannot(system):
     dao, client = system["dao"], system["client"]
     dao.update_user(creator["id"], role="admin")
     response = client.post(
-        f"/api/v1/apps/{app['id']}/workspaces", json={"name": "Created"}, headers=headers,
+        f"/api/v1/apps/{app['app_id']}/workspaces", json={"name": "Created"}, headers=headers,
     )
     assert response.status_code == 201, response.text
     workspace = response.json()["workspace"]

@@ -56,6 +56,7 @@ async def rag_prefetch_node(state: dict[str, Any]) -> dict[str, Any]:
             SearchRequest(query=query, workspace_ids=[workspace_id], top_k=settings.rag_top_k, rerank=settings.rag_rerank),
             authorization=auth.get_current_authorization(),
             app_id=credential.app_id,
+            api_key=credential.api_key or None,
         )
         if not result.success:
             raise RagSearchError(f"{workspace_id}: {result.error}")

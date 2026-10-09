@@ -10,6 +10,9 @@ import pytest
 import psycopg
 from fastapi.testclient import TestClient
 
+os.environ.setdefault("JWT_SECRET", "test-secret-at-least-32-bytes-long")
+os.environ.setdefault("KB_ADMIN_PASSWORD", "admin-password")
+
 from kb_api.api.auth import hash_password
 from kb_api.api.main import create_app
 from kb_api.api.rate_limit import _requests
@@ -99,8 +102,7 @@ def system():
         storage=storage,
         queue=queue,
         search_service=search_service,
-        token_secret="test-secret",
-        service_api_key="test-service-key",
+        token_secret="test-secret-at-least-32-bytes-long",
         initialize=False,
     )
     try:
@@ -119,7 +121,6 @@ def system():
                 "search_service": search_service,
                 "admin": admin,
                 "headers": {"Authorization": f"Bearer {token}"},
-                "service_headers": {"X-Service-Api-Key": "test-service-key"},
             }
     finally:
         with dao._connect() as connection:

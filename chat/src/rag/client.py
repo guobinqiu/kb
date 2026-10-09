@@ -104,6 +104,7 @@ class RagClient:
         *,
         authorization: str | None = None,
         app_id: str | None = None,
+        api_key: str | None = None,
     ) -> RagResult:
         """单次 RAG 检索。
 
@@ -120,6 +121,8 @@ class RagClient:
         }
         if authorization and authorization.lower().startswith("bearer "):
             headers["Authorization"] = authorization
+        if api_key:
+            headers["X-API-Key"] = api_key
         if app_id:
             headers["X-App-Id"] = app_id
         url = self._base_url + PATH

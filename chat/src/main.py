@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from chat.src.agent.graphs.chat import build_chat_graph  # noqa: E402
 from chat.src.agent.nodes.llm import init_semaphore  # noqa: E402
 from chat.src.agent.registry import register_graph, set_checkpointer  # noqa: E402
+from chat.src.api.auth import AuthenticationMiddleware  # noqa: E402
 from chat.src.api.errors import unhandled_exception_handler  # noqa: E402
 from chat.src.api.middleware import add_trace_id_and_timeout, limiter  # noqa: E402
 from chat.src.api.routes import chat as chat_routes  # noqa: E402
@@ -33,7 +34,8 @@ async def lifespan(app: FastAPI):
     checkpointer_cm = None
 
     try:
-        checkpointer_cm, checkpointer = await _create_checkpointer()
+        checkpointer_cm, checkpointer, auth_pool = await _create_checkpointer()
+        app.state.auth_pool = auth_pool
         set_checkpointer(checkpointer)
 
         # 注册 chat graph（pre-fetch 架构，无需 llm_with_tools）
@@ -68,8 +70,8 @@ async def _create_checkpointer():
         await checkpointer.setup()
     except Exception:
         await resources.aclose()
-        return AsyncExitStack(), MemorySaver()
-    return resources, checkpointer
+        return AsyncExitStack(), MemorySaver(), None
+    return resources, checkpointer, pool
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -81,6 +83,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthenticationMiddleware)
 app.middleware("http")(add_trace_id_and_timeout)
 
 

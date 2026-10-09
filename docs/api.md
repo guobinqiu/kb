@@ -6,19 +6,37 @@
 
 ## 健康检查
 
-KB API 提供 `GET /health`，Chat 提供仅供 Compose 内部使用的 `/health`。RAG Indexer 的运行状态通过容器进程、RabbitMQ 消费者数量和队列积压检查。
+KB API 和 Chat 各自提供仅供 Compose 内部使用的 `GET /health`。RAG Indexer 的运行状态通过容器进程、RabbitMQ 消费者数量和队列积压检查。
 
 Parser、文档 Inference 和 Search 不提供独立 HTTP API。公开 `/api/v1/rag/search` 由 KB API 接收；KB API 根据工作区授权计算可检索的 `workspace_ids`，再传给进程内 Search。
 
 ## 鉴权
 
-外部系统调用 KB API 时使用 App API Key；用户登录后使用签名 User Token。KB API 与 Chat 使用同一个 `KB_TOKEN_SECRET` 各自验签。Chat 将原始 `Authorization` 与用户选择的 `X-App-Id` 转发给 KB API 搜索接口，最终工作区权限由 KB API 校验。Indexer 从 MQ 消费任务，使用 `X-Service-Api-Key` 调用结果回写接口；该密钥来自 `SERVICE_API_KEY`。
+外部系统调用搜索和对话接口时使用 App API Key；WebUI 用户登录后使用签名 User Token。两种认证方式是二选一关系，不能在同一请求中同时发送。`X-App-Id` 是两种方式都必须提供的应用上下文，不是独立的认证方式。KB API 与 Chat 的认证中间件统一解析身份，路由再执行身份类型和业务权限校验。Chat 将当前身份凭证和 `X-App-Id` 转发给 KB API 搜索接口，最终工作区权限由 KB API 校验。Indexer 从 MQ 消费任务，使用任务消息携带的 `task_id` 和随机 `callback_token` 回写任务结果；数据库只保存令牌摘要。
 
 请求头：
 
 | Header | 说明 |
 |---|---|
-| `Authorization` | `Bearer <user_token>`，或 KB API 支持的 App API Key |
+| `Authorization` | WebUI 用户发送 `Bearer <user_token>` |
+| `X-App-Id` | 用户当前选择的 App，或外部系统要访问的 App |
+| `X-API-Key` | 外部系统发送与 `X-App-Id` 匹配的 App API Key |
+
+管理、组织、用户、工作区和文件接口只接受 User Token。搜索、对话和会话历史接口接受 User Token 或 App API Key。API Key 不代表具体用户，只能使用所属 App 的检索和对话能力。
+
+WebUI 用户请求：
+
+```http
+Authorization: Bearer <user_token>
+X-App-Id: <app_id>
+```
+
+外部系统请求：
+
+```http
+X-API-Key: <app_api_key>
+X-App-Id: <app_id>
+```
 
 管理台接口使用签名 User Token：
 
@@ -47,7 +65,12 @@ Content-Type: application/json
 ```json
 {
   "access_token": "...",
-  "token_type": "Bearer"
+  "user": {
+    "id": "<user-uuid>",
+    "name": "admin",
+    "role": "owner",
+    "org_id": null
+  }
 }
 ```
 
@@ -117,29 +140,33 @@ GET /api/v1/apps
 }
 ```
 
+平台 `owner` 查询时响应包含 `api_key`；组织用户查询时不返回该字段。
+
 ### 删除应用
 
 ```http
-DELETE /api/v1/apps/{app_uuid}
+DELETE /api/v1/apps/{app_id}
 ```
 
-删除 App 会同时删除其 org 树、workspace 和文件元数据；调用方应先确认业务数据清理策略。
+存在 org 或 workspace 时删除 App 返回 409。当前 App 创建时必建根组织，而根组织不能通过组织接口停用，因此正常创建的 App 暂不能通过该接口删除。路径中的 `app_id` 是创建 App 时提交的业务标识，不是数据库 UUID。
 
 ### 组织树
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/api/v1/orgs?app_id={app_uuid}` | 从指定 App 的根组织向下返回完整 active org 树 |
+| `GET` | `/api/v1/orgs?app_id={app_id}` | 按业务 `app_id` 返回当前用户可见的 active org 树；平台 owner 可见完整树，其他用户从所属组织向下可见 |
 | `POST` | `/api/v1/orgs` | 使用 `parent_id` 和 `name` 创建子组织 |
-| `GET/PUT/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 |
+| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 |
 
 每个 App 只有一棵 org 树，组织不能移动到其他 App。`owner` 是平台角色，不挂组织；`admin` 和 `member` 属于一个 org。用户的登录名和响应字段使用 `name`，组织归属使用 `org_id`。
 
 ## 索引
 
-文件索引由 workspace 文件接口异步触发。调用方先申请上传地址并将文件直传 MinIO，再调用完成接口；KB API 创建该 workspace 的文件记录并发布索引任务。任务包含 `operation`、`app_id`、`workspace_id`、`file_id`、`s3_url` 和 `filename`。
+文件索引由 workspace 文件接口异步触发。调用方先申请上传地址并将文件直传 MinIO，再调用完成接口；KB API 创建该 workspace 的文件记录并发布索引任务。任务包含 `operation`、`app_id`、`workspace_id`、`file_id`、`s3_url`、`filename`、`task_id` 和 `callback_token`。其中 `task_id` 与 `callback_token` 只用于当前任务的结果回写，数据库仅保存回调令牌摘要。
 
 失败文件重试和文件删除也必须从 `/api/v1/workspaces/{workspace_id}/files/...` 进入，以便统一执行 workspace 授权。Indexer 的阶段错误写回该文件记录，由文件状态和 `error` 字段供管理界面展示。
+
+Indexer 完成任务后调用 `POST /api/v1/index-results`，原样回传任务中的 `task_id`、`callback_token`、`operation` 和 `file_id`，并提交 `status`、`error`、`indexed_at` 等结果字段。接口只接受当前文件的当前任务凭证；旧任务和错误令牌返回 401，成功返回 204。
 
 ## 搜索
 
@@ -235,6 +262,7 @@ Content-Type: application/json
 ```http
 POST /api/v1/llm/chat/stream
 Authorization: Bearer <access_token>
+X-App-Id: <app_id>
 Content-Type: application/json
 ```
 
@@ -246,13 +274,15 @@ Content-Type: application/json
 }
 ```
 
-`workspace_ids` 为必填的非空数组。KB API 检索接口逐个校验工作区访问权限；Chat 会话按应用和用户隔离。响应为 SSE，正常返回 `token` 和 `done` 事件，失败返回包含 `message`、`service`、`trace_id` 的 `error` 事件。
+`workspace_ids` 为必填的非空数组。KB API 检索接口逐个校验工作区访问权限。JWT 会话按应用和用户隔离；App API Key 会话按应用隔离，同一 API Key 的调用方应避免复用彼此的 `thread_id`。响应为 SSE，正常返回 `token` 和 `done` 事件，失败返回包含 `message`、`service`、`trace_id` 的 `error` 事件。
 
 ## 知识库与授权
 
-一个 App 可创建多个知识库。`POST /api/v1/apps/{app_id}/workspaces` 提交 `{"name":"知识库名称"}`，`GET` 同路径列出当前用户可访问的知识库。`GET/PUT/DELETE /api/v1/workspaces/{workspace_id}` 用于查询、重命名或删除空知识库。
+一个 App 可创建多个知识库。`POST /api/v1/apps/{app_id}/workspaces` 提交 `{"name":"知识库名称"}`，`GET` 同路径列出当前用户可访问的知识库。路径中的 `app_id` 是业务标识。`GET/PATCH/DELETE /api/v1/workspaces/{workspace_id}` 用于查询、重命名或删除空知识库。
 
 `workspace_user` 保存个人角色，`workspace_org` 保存组织角色。`GET /api/v1/workspaces/{workspace_id}/members` 返回 user/org 两种授权来源；`POST` 同路径提交 `{"type":"user","id":"用户UUID","role":"editor"}` 或 `{"type":"org","id":"组织UUID","role":"viewer"}`。`PUT/DELETE /api/v1/workspaces/{workspace_id}/members/{member_id}?type=user或org` 修改角色或删除授权，PUT body 为 `{"role":"viewer"}`。组织授权仅覆盖直属用户，动态生效且不展开入库。个人角色优先。完整权限与目录接口见[工作区授权概要设计](workspace-authorization.md)。
+
+会话历史接口为 `GET /api/v1/llm/threads`、`GET /api/v1/llm/threads/{thread_id}/messages` 和 `DELETE /api/v1/llm/threads/{thread_id}`。
 
 ## 文件上传
 
@@ -321,19 +351,19 @@ GET /api/v1/workspaces/{workspace_id}/files
 DELETE /api/v1/workspaces/{workspace_id}/files/{file_id}
 ```
 
-KB API 校验工作区删除权限及文件归属后删除文件，并发布清理该文件 chunks 的异步任务。工作区 admin 可删除全部文件，editor 仅可删除自己上传的文件，viewer 无删除权限。
+KB API 校验工作区删除权限及文件归属后，将文件状态改为 `deleting`，发布清理该文件 chunks 的异步任务并返回 202。Indexer 清理成功并完成回写后，KB API 才软删除文件记录和 MinIO 对象；回写前记录仍存在，失败时状态为 `delete_failed`。工作区 admin 可删除全部文件，editor 仅可删除自己上传的文件，viewer 无删除权限。
 
 ## Parser 模块
 
 RAG Indexer 在进程内调用 Parser，输入 presigned URL 和文件名，返回按阅读顺序排列的 `blocks`；Parser 不生成检索分片。本地下载文件时同时返回 `file_size`（字节数），云端直接读取 URL 时省略该字段。
 
-PDF 后端由 `kb_api/config/rag.yaml` 的 `parser` 节选择。`mineru_cloud` 提交 URL、轮询任务并转换结果 JSON；URL 必须能被云平台访问。`.doc/.xls/.ppt` 需要启用 `mineru_cloud`。原生格式解析由 Indexer 内部的 Parser 模块下载到临时目录后处理，并在结束时清理。
+PDF 后端由 `kb_api/config/rag.yaml` 的 `parser` 节选择。`mineru_cloud` 提交 URL、轮询任务并转换结果 JSON；URL 必须能被云平台访问。`.doc/.docx/.xls/.xlsx/.ppt/.pptx` 固定调用 `parser.mineru.base_url` 指向的自建 MinerU API Server，并强制使用 Flash；`parser.mineru.tier` 只影响 PDF。TXT 和 Markdown 由 Indexer 内部的 Parser 模块下载到临时目录后处理，并在结束时清理。
 
 `parser.download_timeout` 控制本地解析前的下载超时，单位秒。MinerU 云端通过 `MINERU_API_KEY` 读取 Token，`mineru_cloud.timeout` 控制提交、轮询及读取结果的总时间。启用 `mineru_cloud` 时关闭其他 PDF 后端的 enable。
 
 `mineru` 调用自建 MinerU API Server，获取结构化内容后转换为 blocks；`tier` 支持 `flash/basic/standard/advanced`，`parse_method` 支持 `auto/ocr/txt`。部署见 `scripts/deploy_mineru_services.txt`，与云端后端只能启用一个，不需要云端 API Key。
 
-TXT 按空行分段，Word 按原生段落读取，Markdown 按语法元素读取，PPT 按页内文本元素读取并携带幻灯片页码，Excel 按表格结构输出。所有格式的文本块统一带 `kind`，不为不存在的类别生成空块
+TXT 按空行分段，Markdown 按语法元素读取；Office 的段落、页码和表格结构来自 MinerU Flash。所有格式的文本块统一带 `kind`，不为不存在的类别生成空块。
 
 RAG 根据 `kind` 和 `chunk_size` 组合相邻文本：标题开启章节，连续标题跟随后正文，正文和列表项按顺序组合，超长文本再拆分，不跨章节、页码、表格或公式合并正文。TXT 保留空行段落边界。代码块不拆分，长度允许时与相邻说明组合；表格保留 caption 和完整 rows，同页紧邻且未跟随正文的 heading 与表格同片，相同 caption 不重复，不拼接普通前后文；单个代码块和表格可以超过普通文本的 chunk_size 限制
 
@@ -363,7 +393,7 @@ RAG 根据 `kind` 和 `chunk_size` 组合相邻文本：标题开启章节，连
 
 `kind` 为 `heading` 标题、`paragraph` 段落、`list_item` 列表项、`code` 代码块、`text` 无法明确分类的文本。TXT 段落使用 `paragraph`；PDF 使用解析后端的分类信息，无法识别时使用 `text`
 
-标题可携带正整数 `level`，数值越小层级越高。MinerU 保留 `text_level`，Markdown 使用标题级别，Word 使用原生大纲级别；没有明确级别时不推测。普通文本不携带级别。
+标题可携带正整数 `level`，数值越小层级越高。MinerU 保留 `text_level`，Markdown 使用标题级别；没有明确级别时不推测。普通文本不携带级别。
 
 `level` 目前仅保留在 Parser 响应中，RAG 不使用它组合章节，仍按上述 `kind` 和长度规则切片。TXT 仍按空行段落切片。
 

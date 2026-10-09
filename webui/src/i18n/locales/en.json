@@ -54,7 +54,6 @@
     "edit": "Edit",
     "disable": "Disable",
     "restore": "Restore",
-    "deletePermanently": "Delete permanently",
     "deleting": "Deleting",
     "search": "Query",
     "actions": "Actions",
@@ -199,8 +198,6 @@
     "deleteConfirm": "Disable {name}? Child organizations and users will also lose access.",
     "disabled": "{name} disabled",
     "restored": "{name} restored",
-    "purged": "{name} permanently deleted",
-    "purgeConfirm": "Permanently delete empty organization {name}? This cannot be undone.",
     "empty": "No organizations"
   },
   "workspaceScope": {

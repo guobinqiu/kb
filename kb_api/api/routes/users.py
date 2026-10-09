@@ -76,7 +76,7 @@ def get_user(user_id: str, request: Request, user=Depends(current_user)):
     return _public(found)
 
 
-@router.put("/{user_id}")
+@router.patch("/{user_id}")
 def update_user(user_id: str, body: UserUpdate, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     found = dao.get_user(user_id)
