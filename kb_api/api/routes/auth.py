@@ -1,8 +1,9 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from kb_api.api.auth import create_token, resolve_principal, verify_password, hash_password
+from kb_api.api.rate_limit import require_rate_limit
 from kb_api.api.schemas import LoginRequest, PasswordChange
 
 
@@ -13,7 +14,7 @@ def _public_user(user: dict) -> dict:
     return {key: value for key, value in user.items() if key != "password_hash"}
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(require_rate_limit)])
 def login(body: LoginRequest, request: Request):
     dao = request.app.state.dao
     user = dao.get_user_by_name(body.name)

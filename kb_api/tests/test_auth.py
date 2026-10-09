@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
 from kb_api.api.auth import create_token, decode_token, hash_password, verify_password
 from kb_api.api.config import Settings
+from kb_api.api.rate_limit import _requests
 
 
 def test_password_is_pbkdf2_and_verifies_without_storing_plaintext():
@@ -80,6 +82,24 @@ def test_login_rejects_bad_credentials(system):
         json={"name": "admin", "password": "bad"},
     )
     assert response.status_code == 401
+
+
+def test_login_is_rate_limited_by_client(system):
+    _requests.clear()
+    system["client"].app.state.api_limits = SimpleNamespace(rate_limit="2/minute")
+
+    for _ in range(2):
+        response = system["client"].post(
+            "/api/v1/auth/login",
+            json={"name": "admin", "password": "bad"},
+        )
+        assert response.status_code == 401
+
+    response = system["client"].post(
+        "/api/v1/auth/login",
+        json={"name": "admin", "password": "bad"},
+    )
+    assert response.status_code == 429
 
 
 def test_rag_config_rejects_app_api_key_as_bearer(system):
