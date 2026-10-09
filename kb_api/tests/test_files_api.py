@@ -64,14 +64,14 @@ def test_upload_url_rejects_unsupported_file_type(system, filename):
     assert system["queue"].messages == []
 
 
-def test_complete_rejects_unsupported_file_type(system):
+def test_index_rejects_unsupported_file_type(system):
     app = _app(system)
     workspace = _workspace(system, app, "Documents")
     file_id = str(uuid4())
     s3_url = f"s3://kb/uploads/{app['id']}/{workspace['id']}/{file_id}/source/archive.zip"
     system["storage"].objects[s3_url] = b"archive"
     response = system["client"].post(
-        f"/api/v1/workspaces/{workspace['id']}/files/{file_id}/complete",
+        f"/api/v1/workspaces/{workspace['id']}/files/{file_id}/index",
         json={"filename": "archive.zip", "s3_url": s3_url}, headers=system["headers"],
     )
     assert response.status_code == 415, response.text
@@ -208,7 +208,7 @@ def test_failed_file_same_content_can_index_again(system):
     task_count = len(system["queue"].messages)
 
     response = system["client"].post(
-        f"/api/v1/workspaces/{workspace['id']}/files/{created['id']}/complete",
+        f"/api/v1/workspaces/{workspace['id']}/files/{created['id']}/index",
         json={"s3_url": created["s3_url"], "filename": created["filename"]},
         headers=system["headers"],
     )
@@ -224,7 +224,7 @@ def test_failed_file_same_content_can_index_again(system):
     assert system["queue"].messages[-1][1]["s3_url"] == created["s3_url"]
 
 
-def test_indexing_file_complete_same_s3_url_is_idempotent(system):
+def test_indexing_file_index_same_s3_url_is_idempotent(system):
     workspace = _workspace(system, _app(system), "Documents")
     created = upload_file(system, workspace_id=workspace["id"])
     assert created["status"] == "indexing"
@@ -232,7 +232,7 @@ def test_indexing_file_complete_same_s3_url_is_idempotent(system):
     messages = list(system["queue"].messages)
 
     response = system["client"].post(
-        f"/api/v1/workspaces/{workspace['id']}/files/{created['id']}/complete",
+        f"/api/v1/workspaces/{workspace['id']}/files/{created['id']}/index",
         json={"s3_url": created["s3_url"], "filename": created["filename"]},
         headers=system["headers"],
     )
@@ -260,7 +260,7 @@ def test_same_content_with_different_file_id_still_publishes_index_task(system):
     assert system["queue"].messages[-1][1]["operation"] == "index"
 
 
-def test_complete_rejects_s3_url_in_other_bucket(system):
+def test_index_rejects_s3_url_in_other_bucket(system):
     workspace = _workspace(system, _app(system), "Documents")
     base = f"/api/v1/workspaces/{workspace['id']}/files"
     response = system["client"].post(
@@ -272,12 +272,12 @@ def test_complete_rejects_s3_url_in_other_bucket(system):
     assert foreign_url != upload["s3_url"]
     system["storage"].objects[foreign_url] = b"hello"
 
-    completed = system["client"].post(
-        f"{base}/{upload['file_id']}/complete",
+    indexed = system["client"].post(
+        f"{base}/{upload['file_id']}/index",
         json={"s3_url": foreign_url, "filename": "guide.txt"},
         headers=system["headers"],
     )
 
-    assert completed.status_code == 400, completed.text
+    assert indexed.status_code == 400, indexed.text
     assert system["queue"].messages == []
     assert system["dao"].get_file(upload["file_id"]) is None

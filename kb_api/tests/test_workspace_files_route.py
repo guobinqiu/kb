@@ -127,12 +127,12 @@ def test_workspace_file_lifecycle_uses_workspace_scope_and_index_contract():
     assert "node_id" not in upload
     storage.objects[upload["s3_url"]] = b"hello"
 
-    completed = client.post(
-        f"{base}/{upload['file_id']}/complete",
+    indexed = client.post(
+        f"{base}/{upload['file_id']}/index",
         json={"s3_url": upload["s3_url"], "filename": "guide.txt"},
     )
-    assert completed.status_code == 202, completed.text
-    record = completed.json()
+    assert indexed.status_code == 202, indexed.text
+    record = indexed.json()
     assert record["workspace_id"] == "workspace-uuid"
     assert "org_id" not in record
     assert "node_id" not in record
@@ -145,6 +145,10 @@ def test_workspace_file_lifecycle_uses_workspace_scope_and_index_contract():
     assert message.items() >= expected.items()
     assert message["task_id"]
     assert message["callback_token"]
+    assert client.post(
+        f"{base}/{upload['file_id']}/complete",
+        json={"s3_url": upload["s3_url"], "filename": "guide.txt"},
+    ).status_code == 404
     assert client.get(base).json() == {"files": [record]}
     assert client.get(f"{base}/{upload['file_id']}").json() == record
 
@@ -171,7 +175,7 @@ def test_workspace_file_routes_reject_other_workspace_and_invalid_object_path():
 
     wrong_url = prepared["s3_url"].replace("workspace-uuid", "other-workspace")
     invalid = client.post(
-        f"{base}/{prepared['file_id']}/complete",
+        f"{base}/{prepared['file_id']}/index",
         json={"s3_url": wrong_url, "filename": "guide.txt"},
     )
     assert invalid.status_code == 400
@@ -181,7 +185,7 @@ def test_workspace_file_routes_reject_other_workspace_and_invalid_object_path():
     assert client.get(base).status_code == 404
     assert client.post(f"{base}/upload-url", json={"filename": "guide.txt"}).status_code == 404
     assert client.post(
-        f"{base}/{prepared['file_id']}/complete",
+        f"{base}/{prepared['file_id']}/index",
         json={"s3_url": prepared["s3_url"], "filename": "guide.txt"},
     ).status_code == 404
 
@@ -192,7 +196,7 @@ def test_workspace_file_update_keeps_file_id_and_rejects_foreign_file():
     first = client.post(f"{base}/upload-url", json={"filename": "v1.txt"}).json()
     storage.objects[first["s3_url"]] = b"one"
     created = client.post(
-        f"{base}/{first['file_id']}/complete",
+        f"{base}/{first['file_id']}/index",
         json={"s3_url": first["s3_url"], "filename": "v1.txt"},
     ).json()
 
@@ -205,7 +209,7 @@ def test_workspace_file_update_keeps_file_id_and_rejects_foreign_file():
     assert upload["s3_url"] != created["s3_url"]
     storage.objects[upload["s3_url"]] = b"two"
     updated = client.post(
-        f"{base}/{upload['file_id']}/complete",
+        f"{base}/{upload['file_id']}/index",
         json={"s3_url": upload["s3_url"], "filename": "v2.txt"},
     )
     assert updated.status_code == 202, updated.text
@@ -222,25 +226,25 @@ def test_workspace_file_update_keeps_file_id_and_rejects_foreign_file():
         f"{foreign_base}/upload-url", json={"file_id": created["id"], "filename": "stolen.txt"},
     ).status_code == 404
     assert client.post(
-        f"{foreign_base}/{created['id']}/complete",
+        f"{foreign_base}/{created['id']}/index",
         json={"s3_url": upload["s3_url"], "filename": "v2.txt"},
     ).status_code == 400
     assert len(queue.messages) == 2
 
 
-def test_complete_marks_file_failed_when_index_task_publish_fails():
+def test_index_marks_file_failed_when_index_task_publish_fails():
     client, dao, storage, queue = make_client()
     base = "/api/v1/workspaces/workspace-uuid/files"
     prepared = client.post(f"{base}/upload-url", json={"filename": "guide.txt"}).json()
     storage.objects[prepared["s3_url"]] = b"hello"
     queue.error = RuntimeError("rabbitmq unavailable")
 
-    completed = client.post(
-        f"{base}/{prepared['file_id']}/complete",
+    indexed = client.post(
+        f"{base}/{prepared['file_id']}/index",
         json={"s3_url": prepared["s3_url"], "filename": "guide.txt"},
     )
 
-    assert completed.status_code == 503
+    assert indexed.status_code == 503
     record = dao.get_file(prepared["file_id"])
     assert record["status"] == "failed"
     assert record["indexed_at"] is None
@@ -248,7 +252,7 @@ def test_complete_marks_file_failed_when_index_task_publish_fails():
         "error": "rabbitmq unavailable",
         "service": "kb_api.queue",
         "retryable": True,
-        "traceId": completed.json()["detail"]["traceId"],
+        "traceId": indexed.json()["detail"]["traceId"],
     }
 
 
@@ -258,7 +262,7 @@ def test_delete_marks_file_delete_failed_when_index_task_publish_fails():
     prepared = client.post(f"{base}/upload-url", json={"filename": "guide.txt"}).json()
     storage.objects[prepared["s3_url"]] = b"hello"
     created = client.post(
-        f"{base}/{prepared['file_id']}/complete",
+        f"{base}/{prepared['file_id']}/index",
         json={"s3_url": prepared["s3_url"], "filename": "guide.txt"},
     ).json()
     queue.error = RuntimeError("rabbitmq unavailable")
@@ -297,12 +301,12 @@ def test_workspace_member_can_upload_and_manage_own_files_only():
     assert prepared.status_code == 200, prepared.text
     upload = prepared.json()
     storage.objects[upload["s3_url"]] = b"hello"
-    completed = client.post(
-        f"{base}/{upload['file_id']}/complete",
+    indexed = client.post(
+        f"{base}/{upload['file_id']}/index",
         json={"s3_url": upload["s3_url"], "filename": "guide.txt"},
     )
-    assert completed.status_code == 202, completed.text
-    assert completed.json()["created_by"] == "user-uuid"
+    assert indexed.status_code == 202, indexed.text
+    assert indexed.json()["created_by"] == "user-uuid"
     assert client.post(
         f"{base}/upload-url", json={"file_id": upload["file_id"], "filename": "updated.txt"},
     ).status_code == 200
@@ -321,7 +325,7 @@ def test_workspace_member_can_upload_and_manage_own_files_only():
     foreign_url = "s3://kb/uploads/app-uuid/workspace-uuid/file-uuid/other/guide.txt"
     storage.objects[foreign_url] = b"other"
     assert client.post(
-        f"{base}/file-uuid/complete",
+        f"{base}/file-uuid/index",
         json={"s3_url": foreign_url, "filename": "guide.txt"},
     ).status_code == 403
     assert client.delete(f"{base}/file-uuid").status_code == 403

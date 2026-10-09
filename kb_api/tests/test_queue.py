@@ -84,7 +84,7 @@ def test_old_index_task_cannot_overwrite_newer_file_state(system):
     workspace_id = record["workspace_id"]
     system["storage"].objects[record["s3_url"]] = b"changed"
     response = system["client"].post(
-        f"/api/v1/workspaces/{workspace_id}/files/{record['id']}/complete",
+        f"/api/v1/workspaces/{workspace_id}/files/{record['id']}/index",
         json={"s3_url": record["s3_url"], "filename": record["filename"]},
         headers=system["headers"],
     )

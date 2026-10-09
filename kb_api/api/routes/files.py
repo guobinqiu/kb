@@ -17,7 +17,7 @@ from kb_api.api.permissions import (
     has_workspace_permission,
 )
 from kb_api.api.rate_limit import require_index_rate_limit, require_rate_limit
-from kb_api.api.schemas import FileUploadWorkspaceComplete, FileUploadWorkspaceRequest
+from kb_api.api.schemas import FileUploadWorkspaceRequest, WorkspaceFileIndexRequest
 from kb_api.api.services.rabbitmq import INDEX_TASK_QUEUE
 from kb_api.api.telemetry import get_trace_id
 
@@ -116,12 +116,12 @@ def create_workspace_upload_url(
 
 
 @router.post(
-    "/workspaces/{workspace_id}/files/{file_id}/complete",
+    "/workspaces/{workspace_id}/files/{file_id}/index",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(require_rate_limit), Depends(require_index_rate_limit)],
 )
-def complete_workspace_upload(
-    workspace_id: str, file_id: str, request: Request, body: FileUploadWorkspaceComplete, user=Depends(current_user)
+def index_workspace_file(
+    workspace_id: str, file_id: str, request: Request, body: WorkspaceFileIndexRequest, user=Depends(current_user)
 ):
     dao = request.app.state.dao
     workspace = _workspace(dao, workspace_id, user)

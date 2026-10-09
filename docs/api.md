@@ -162,7 +162,7 @@ DELETE /api/v1/apps/{app_id}
 
 ## 索引
 
-文件索引由 workspace 文件接口异步触发。调用方先申请上传地址并将文件直传 MinIO，再调用完成接口；KB API 创建该 workspace 的文件记录并发布索引任务。任务包含 `operation`、`app_id`、`workspace_id`、`file_id`、`s3_url`、`filename`、`task_id` 和 `callback_token`。其中 `task_id` 与 `callback_token` 只用于当前任务的结果回写，数据库仅保存回调令牌摘要。
+文件索引由 workspace 文件接口异步触发。调用方先申请上传地址并将文件直传 MinIO，再调用索引接口；KB API 创建该 workspace 的文件记录并发布索引任务。任务包含 `operation`、`app_id`、`workspace_id`、`file_id`、`s3_url`、`filename`、`task_id` 和 `callback_token`。其中 `task_id` 与 `callback_token` 只用于当前任务的结果回写，数据库仅保存回调令牌摘要。
 
 失败文件重试和文件删除也必须从 `/api/v1/workspaces/{workspace_id}/files/...` 进入，以便统一执行 workspace 授权。Indexer 的阶段错误写回该文件记录，由文件状态和 `error` 字段供管理界面展示。
 
@@ -312,10 +312,10 @@ Content-Type: application/json
 
 对 `upload_url` 发起 `PUT`，请求体为原始文件字节，`Content-Type` 使用申请响应里的 `content_type`。上传请求不经过 KB API。
 
-### 完成上传并索引
+### 提交索引
 
 ```http
-POST /api/v1/workspaces/{workspace_id}/files/{file_id}/complete
+POST /api/v1/workspaces/{workspace_id}/files/{file_id}/index
 Content-Type: application/json
 ```
 

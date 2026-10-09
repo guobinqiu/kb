@@ -162,7 +162,7 @@ sequenceDiagram
     KBAPI-->>WebUI: 返回 file_id 与预签名 PUT URL
     WebUI->>MinIO: PUT 文件内容
     MinIO-->>WebUI: 上传成功
-    WebUI->>KBAPI: POST /files/{file_id}/complete
+    WebUI->>KBAPI: POST /files/{file_id}/index
     KBAPI->>MinIO: 确认对象存在并计算 checksum
     KBAPI->>RDB: 创建或更新 workspace 文件记录
     KBAPI->>MQ: 发布含 workspace_id 和任务回调凭证的索引任务

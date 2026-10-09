@@ -186,46 +186,43 @@ JWT 与 App API Key 不能在同一请求中同时发送。Indexer 结果回写�
 
 ### 接口明细
 
-管理接口使用 JWT：
-
-```http
-Authorization: Bearer <user_token>
-```
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `POST` | `/api/v1/auth/login` | 用户登录 |
-| `GET` | `/api/v1/auth/me` | 当前用户与平台管理员能力 |
-| `PATCH` | `/api/v1/auth/password` | 当前用户验证旧密码后修改密码 |
-| `GET/POST` | `/api/v1/apps` | 查询或创建应用；每个 App 维护一棵独立 org 树 |
-| `GET/PATCH/DELETE` | `/api/v1/apps/{app_id}` | 按业务 `app_id` 查询、修改或删除应用 |
-| `GET/POST` | `/api/v1/orgs` | 查询当前用户可见的组织树或创建组织 |
-| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 |
-| `GET/POST` | `/api/v1/users` | 查询可见用户或创建用户 |
-| `GET/PATCH/DELETE` | `/api/v1/users/{user_id}` | 查询、修改或停用用户 |
-| `GET/POST` | `/api/v1/apps/{app_id}/workspaces` | 查询或创建知识库 |
-| `GET/PATCH/DELETE` | `/api/v1/workspaces/{workspace_id}` | 查询、修改或删除知识库 |
-| `GET/POST` | `/api/v1/workspaces/{workspace_id}/members` | 查询授权来源，或提交 `type/id/role` 新增个人或组织授权 |
-| `GET` | `/api/v1/workspaces/{workspace_id}/orgs` | 查询可加入工作区的组织 |
-| `GET` | `/api/v1/workspaces/{workspace_id}/users` | 分页查询可加入工作区的用户 |
-| `PUT/DELETE` | `/api/v1/workspaces/{workspace_id}/members/{member_id}?type=user或org` | 按授权记录 ID 修改角色或移除授权 |
-| `GET` | `/api/v1/workspaces/{workspace_id}/files` | 查询知识库文件 |
-| `POST` | `/api/v1/workspaces/{workspace_id}/files/upload-url` | 校验权限并签发 MinIO PUT 上传地址 |
-| `POST` | `/api/v1/workspaces/{workspace_id}/files/{file_id}/complete` | 校验对象已上传，登记文件并发布索引任务 |
-| `GET/DELETE` | `/api/v1/workspaces/{workspace_id}/files/{file_id}` | 查询或删除文件 |
-| `GET` | `/api/v1/workspaces/{workspace_id}/chunks` | 分页查询知识库分片 |
-| `POST` | `/api/v1/rag/search` | 按已授权的 `workspace_ids` 检索，可跨知识库 |
-| `GET` | `/api/v1/rag/config` | 查询检索默认值和 sparse、rerank 能力 |
+| 方法 | 路径 | 说明 | 认证方式 |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/auth/login` | 用户登录 | 无 |
+| `GET` | `/api/v1/auth/me` | 当前用户与平台管理员能力 | JWT |
+| `PATCH` | `/api/v1/auth/password` | 当前用户验证旧密码后修改密码 | JWT |
+| `GET/POST` | `/api/v1/apps` | 查询或创建应用；每个 App 维护一棵独立 org 树 | JWT |
+| `GET/PATCH/DELETE` | `/api/v1/apps/{app_id}` | 按业务 `app_id` 查询、修改或删除应用 | JWT |
+| `GET/POST` | `/api/v1/orgs` | 查询当前用户可见的组织树或创建组织 | JWT |
+| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 | JWT |
+| `GET/POST` | `/api/v1/users` | 查询可见用户或创建用户 | JWT |
+| `GET/PATCH/DELETE` | `/api/v1/users/{user_id}` | 查询、修改或停用用户 | JWT |
+| `GET/POST` | `/api/v1/apps/{app_id}/workspaces` | 查询或创建知识库 | JWT |
+| `GET/PATCH/DELETE` | `/api/v1/workspaces/{workspace_id}` | 查询、修改或删除知识库 | JWT |
+| `GET/POST` | `/api/v1/workspaces/{workspace_id}/members` | 查询授权来源，或提交 `type/id/role` 新增个人或组织授权 | JWT |
+| `GET` | `/api/v1/workspaces/{workspace_id}/orgs` | 查询可加入工作区的组织 | JWT |
+| `GET` | `/api/v1/workspaces/{workspace_id}/users` | 分页查询可加入工作区的用户 | JWT |
+| `PUT/DELETE` | `/api/v1/workspaces/{workspace_id}/members/{member_id}?type=user或org` | 按授权记录 ID 修改角色或移除授权 | JWT |
+| `GET` | `/api/v1/workspaces/{workspace_id}/files` | 查询知识库文件 | JWT |
+| `POST` | `/api/v1/workspaces/{workspace_id}/files/upload-url` | 校验权限并签发 MinIO PUT 上传地址 | JWT |
+| `POST` | `/api/v1/workspaces/{workspace_id}/files/{file_id}/index` | 校验对象已上传，登记文件并发布索引任务 | JWT |
+| `GET/DELETE` | `/api/v1/workspaces/{workspace_id}/files/{file_id}` | 查询或删除文件 | JWT |
+| `GET` | `/api/v1/workspaces/{workspace_id}/chunks` | 分页查询知识库分片 | JWT |
+| `POST` | `/api/v1/rag/search` | 按已授权的 `workspace_ids` 检索，可跨知识库 | JWT 或 App API Key（二选一） |
+| `GET` | `/api/v1/rag/config` | 查询检索默认值和 sparse、rerank 能力 | JWT 或 App API Key（二选一） |
+| `POST` | `/api/v1/llm/chat/stream` | 检索知识库并流式生成回答 | JWT 或 App API Key（二选一） |
+| `GET/DELETE` | `/api/v1/llm/threads*` | 查询或删除会话及消息 | JWT 或 App API Key（二选一） |
+| `POST` | `/api/v1/index-results` | Indexer 回写当前索引或删除任务结果 | 任务回调令牌 |
 
 创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`apps.id` 是数据库内部使用的 UUID 主键；`app_id` 是 2-40 个字符、唯一且不可变的业务标识，App 管理路径、`X-App-Id`、索引任务和检索统一使用它。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
 
-文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用完成接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，完成接口会复用该 ID。浏览器访问的 MinIO 地址由 `KB_MINIO_PUBLIC_URL` 配置，需能从访问 WebUI 的浏览器连通。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
+文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用索引接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，索引接口会复用该 ID。浏览器访问的 MinIO 地址由 `KB_MINIO_PUBLIC_URL` 配置，需能从访问 WebUI 的浏览器连通。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
 
 KB API 将索引和删除任务发布到 `kb.index.tasks`，RAG Indexer 通过 HTTP 回写接口更新结果。一个 App 可有多个 workspace；`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。操作和角色映射固定在代码，不建权限表。文件只归属 workspace，不归属 org；同一 App 的工作区共用向量 collection，分片保存 `workspace_id`、`file_id` 和 `chunk_index`。搜索可传多个 `workspace_ids` 和 `file_ids`，KB API 会校验工作区授权。详见[工作区授权概要设计](docs/workspace-authorization.md)。
 
 ### 文件索引
 
-文件只归属 workspace。使用 `/api/v1/workspaces/{workspace_id}/files/upload-url` 申请地址，直传 MinIO 后调用 `/api/v1/workspaces/{workspace_id}/files/{file_id}/complete` 创建文件记录和异步索引任务。
+文件只归属 workspace。使用 `/api/v1/workspaces/{workspace_id}/files/upload-url` 申请地址，直传 MinIO 后调用 `/api/v1/workspaces/{workspace_id}/files/{file_id}/index` 创建文件记录和异步索引任务。
 
 ### 搜索
 

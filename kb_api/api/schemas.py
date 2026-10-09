@@ -121,7 +121,7 @@ class FileUploadWorkspaceRequest(StrictModel):
     content_type: str | None = Field(default=None, max_length=255)
 
 
-class FileUploadWorkspaceComplete(StrictModel):
+class WorkspaceFileIndexRequest(StrictModel):
     s3_url: str = Field(min_length=1)
     filename: str = Field(min_length=1, max_length=1024)
     content_type: str | None = Field(default=None, max_length=255)

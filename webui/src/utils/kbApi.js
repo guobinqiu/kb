@@ -159,12 +159,12 @@ async function uploadDirect(workspaceId, file, fileId) {
     const detail = await result.text()
     throw new Error(`MinIO upload failed (${result.status}): ${detail || result.statusText}`)
   }
-  const completed = await axios.post(`${base}/${encodeURIComponent(upload.file_id)}/complete`, {
+  const indexed = await axios.post(`${base}/${encodeURIComponent(upload.file_id)}/index`, {
     s3_url: upload.s3_url,
     filename: upload.filename,
     content_type: upload.content_type,
   })
-  return completed.data
+  return indexed.data
 }
 
 export async function uploadFile(file, workspaceId) {
