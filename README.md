@@ -171,8 +171,8 @@ http://localhost:5175
 | 组织和账户 | `/api/v1/orgs*`、`/api/v1/users*` | 管理组织树和企业账户 | JWT |
 | 工作区和成员 | `/api/v1/workspaces*` | 管理知识库及个人、组织授权 | JWT |
 | 文件和分片 | `/api/v1/workspaces/{workspace_id}/files*`、`/chunks` | 上传、查询和删除文件，查看索引分片 | JWT |
-| RAG 检索 | `/api/v1/rag/search`、`/api/v1/rag/config` | 跨已授权工作区检索，查询检索配置 | JWT 或 App API Key |
-| 对话 | `POST /api/v1/llm/chat/stream` | 检索知识库并流式生成回答 | JWT 或 App API Key |
+| RAG 检索 | `/api/v1/rag/search`、`/api/v1/rag/config` | 跨已授权工作区检索，查询检索配置 | JWT 或 API Key |
+| 对话 | `POST /api/v1/llm/chat/stream` | 检索知识库并流式生成回答 | JWT 或 API Key |
 | 索引结果回写 | `POST /api/v1/index-results` | Indexer 完成任务后更新文件状态 | 任务回调令牌 |
 
 认证请求头：
@@ -208,10 +208,10 @@ JWT 与 App API Key 不能在同一请求中同时发送。Indexer 结果回写�
 | `POST` | `/api/v1/workspaces/{workspace_id}/files/{file_id}/index` | 校验对象已上传，登记文件并发布索引任务 | JWT |
 | `GET/DELETE` | `/api/v1/workspaces/{workspace_id}/files/{file_id}` | 查询或删除文件 | JWT |
 | `GET` | `/api/v1/workspaces/{workspace_id}/chunks` | 分页查询知识库分片 | JWT |
-| `POST` | `/api/v1/rag/search` | 按已授权的 `workspace_ids` 检索，可跨知识库 | JWT 或 App API Key（二选一） |
-| `GET` | `/api/v1/rag/config` | 查询检索默认值和 sparse、rerank 能力 | JWT 或 App API Key（二选一） |
-| `POST` | `/api/v1/llm/chat/stream` | 检索知识库并流式生成回答 | JWT 或 App API Key（二选一） |
-| `GET/DELETE` | `/api/v1/llm/threads*` | 查询或删除会话及消息 | JWT 或 App API Key（二选一） |
+| `POST` | `/api/v1/rag/search` | 按已授权的 `workspace_ids` 检索，可跨知识库 | JWT 或 API Key |
+| `GET` | `/api/v1/rag/config` | 查询检索默认值和 sparse、rerank 能力 | JWT 或 API Key |
+| `POST` | `/api/v1/llm/chat/stream` | 检索知识库并流式生成回答 | JWT 或 API Key |
+| `GET/DELETE` | `/api/v1/llm/threads*` | 查询或删除会话及消息 | JWT 或 API Key |
 | `POST` | `/api/v1/index-results` | Indexer 回写当前索引或删除任务结果 | 任务回调令牌 |
 
 创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`apps.id` 是数据库内部使用的 UUID 主键；`app_id` 是 2-40 个字符、唯一且不可变的业务标识，App 管理路径、`X-App-Id`、索引任务和检索统一使用它。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
