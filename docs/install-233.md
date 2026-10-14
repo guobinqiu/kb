@@ -4,7 +4,7 @@
 
 本指南使用 Docker Compose、本机构建应用镜像。关系数据库使用兼容 PostgreSQL 的 ParadeDB 镜像，并同时作为默认向量后端。MinerU 和 TEI 复用 233 上已经运行的服务；Chat 当前使用 OpenRouter。
 
-当前 `deploy/infra.yaml` 使用 WeKnora Compose 同款 `paradedb/paradedb:v0.22.6-pg17`。已有 PG16 的 `pg_data` 不能直接挂载到 PG17；升级现有 233 安装时，须先确定数据迁移或空库重建方案，再执行下文的 `just infra up`。
+当前 `deploy/infra.yaml` 使用 WeKnora Compose 同款 `paradedb/paradedb:v0.22.6-pg17`。已有 PG16 的 `pg_data` 不能直接挂载到 PG17；升级现有 233 安装时，须先确定数据迁移或空库重建方案，再执行下文的 `just deploy infra`。
 
 ## 1. 检查环境
 
@@ -186,7 +186,7 @@ docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```bash
 cd ~/workspace/kb
 sudo install -d -o 10001 -g 10001 jaeger_data jaeger_data/keys jaeger_data/values
-just infra up
+just deploy infra
 docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml ps -a
 ```
 
@@ -197,7 +197,7 @@ docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml ps -a
 ```bash
 docker pull docker.m.daocloud.io/library/rabbitmq:4-management
 docker tag docker.m.daocloud.io/library/rabbitmq:4-management rabbitmq:4-management
-just infra up
+just deploy infra
 ```
 
 这是同一镜像的下载和本地标签设置，无需更改项目配置或 Docker 全局配置。
@@ -225,14 +225,14 @@ docker exec kb_postgres psql -U rag -d rag -c '\dt'
 
 ```bash
 cd ~/workspace/kb
-just kb up
-just indexer up
-just chat up
-just webui up
-just nginx up
+just deploy kb
+just deploy indexer
+just deploy chat
+just deploy webui
+just deploy nginx
 ```
 
-前四条命令自动构建并重新创建对应容器，最后一条启动独立的域名入口 Nginx。`just webui up` 构建独立 WebUI 镜像；镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat，认证由后端服务处理。域名入口通过 `kb-net` 访问这三个服务。
+前四条命令自动构建并重新创建对应容器，最后一条启动独立的域名入口 Nginx。`just deploy webui` 构建独立 WebUI 镜像；镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat，认证由后端服务处理。域名入口通过 `kb-net` 访问这三个服务。
 
 使用真实域名时，先在 DNS 中将 `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` 指向 233；使用示例 `.test` 域名时，域名解析取决于发起请求的机器。233 的 `/etc/hosts` 可以在发布时设置 `19.16.1.233 web.kb.test api.kb.test chat.kb.test`，但这只影响 233 本机；本机浏览器仍使用本机 `/etc/hosts`，不会自动切到 233。Docker 不会自动创建这些记录。
 
@@ -300,13 +300,13 @@ RabbitMQ 管理台为 `http://19.16.1.233:15672`，使用 `.env` 的 `RABBITMQ_U
 ```bash
 cd ~/workspace/kb
 git pull --ff-only
-just kb up
-just indexer up
-just chat up
-just webui up
-just nginx up
+just deploy kb
+just deploy indexer
+just deploy chat
+just deploy webui
+just deploy nginx
 ```
 
-前端依赖发生变化时直接执行 `just webui up`，Docker 构建阶段会重新安装依赖并生成静态文件。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just infra up`。
+前端依赖发生变化时直接执行 `just deploy webui`，Docker 构建阶段会重新安装依赖并生成静态文件。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just deploy infra`。
 
 项目数据分别保存在 `pg_data`、`qdrant_data`、`minio_data`、`rabbitmq_data`、`jaeger_data` 下；模型通过 `models` 链接复用。`.dockerignore` 已排除这些数据目录和 `.env`，数据库启动后仍可正常构建应用镜像。

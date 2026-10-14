@@ -11,19 +11,19 @@
 ```bash
 cp deploy/env.example deploy/.env
 # 先编辑 deploy/.env；JWT_SECRET 和 KB_ADMIN_PASSWORD 不能保留占位值
-just infra up
+just deploy infra
 until docker exec kb_postgres pg_isready -U rag -d rag; do sleep 2; done
 docker exec -i kb_postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
-just kb up
-just indexer up
-just chat up
-just webui up
-just nginx up
+just deploy kb
+just deploy indexer
+just deploy chat
+just deploy webui
+just deploy nginx
 ```
 
 将 `web.kb.test`、`api.kb.test`、`chat.kb.test` 解析到部署节点后，打开管理台：<http://web.kb.test>。域名可通过 `deploy/.env` 中的 `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` 修改；没有 DNS 记录时需在实际访问端的 `hosts` 中设置。原 `http://localhost:5175` 入口暂时保留。
 
-各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`。Compose 内部服务使用服务名通信；MinerU、TEI 等模型服务也可以按 `kb_api/config/rag.yaml` 配置为宿主机或远程地址。`deploy/infra.yaml` 使用 ParadeDB 镜像提供兼容 PostgreSQL 的关系数据库和默认向量后端，并启动 RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Qdrant、Milvus 与 etcd 按 profile 启用，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
+各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`。Compose 内部服务使用服务名通信；MinerU、TEI 等模型服务也可以按 `kb_api/config/rag.yaml` 配置为宿主机或远程地址。`deploy/infra.yaml` 使用 ParadeDB 镜像提供兼容 PostgreSQL 的关系数据库和默认向量后端，并启动 RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Qdrant、Milvus 与 etcd 按 profile 启用，不默认启动。TEI 与 MinerU 按需执行 `just deploy tei`、`just deploy mineru`。
 
 KB API 负责登录、应用、组织树、用户、工作区、文件、检索授权和索引任务状态；RAG Indexer 是纯 MQ 消费进程，从 RabbitMQ 消费索引与删除任务，通过 HTTP 向 KB API 回写结果，内含 Parser 与文档向量模块，不监听 HTTP 端口。公开搜索请求先进入 KB API，由 KB API 校验工作区授权，再调用 RAG 检索。Chat 使用一个 Uvicorn worker。
 
@@ -33,17 +33,13 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 
 | 命令 | 作用 |
 | --- | --- |
-| `just infra up/down` | 启动或移除基础服务容器 |
-| `just kb up/down/build` | 管理 KB API 或构建其镜像 |
-| `just indexer up/down/build` | 管理 RAG Indexer 或构建其镜像 |
-| `just chat up/down/build` | 管理 Chat 或构建其镜像 |
-| `just webui up/down/build` | 管理 WebUI 服务或构建其镜像 |
-| `just nginx up/down` | 管理域名入口 Nginx |
-| `just tei up/down` | 管理 TEI 模型服务 |
-| `just mineru up/down` | 管理 MinerU 模型服务 |
+| `just deploy <service>` | 创建或更新服务容器，应用服务同时构建镜像 |
+| `just build <service>` | 构建 KB API、Indexer、Chat 或 WebUI 镜像 |
+| `just start/stop/restart <service>` | 启动、停止或重启已有容器 |
+| `just remove <service>` | 移除对应 Compose 项目的容器 |
 | `just --list` | 查看命令入口 |
 
-表中的 `up/down/build` 表示可选动作，每次只传一个，例如 `just kb up`、`just kb build`、`just kb down`。没有 `restart/start/stop` 动作，也没有 `app`、`bundle` 或顶层 `build` 命令。
+`<service>` 为 `infra`、`kb`、`indexer`、`chat`、`webui`、`nginx`、`tei` 或 `mineru`；例如 `just deploy indexer`、`just build indexer`、`just stop indexer`。`build` 仅适用于有本地镜像构建的服务。
 
 部署文件与独立项目：
 
@@ -78,7 +74,7 @@ MinerU Compose 沿用官方方式在本地构建好的 `mineru:4` 镜像，不�
 应用镜像使用本地名称 `kb-<服务名>:${IMAGE_TAG}`。KB API 使用 `kb_api/Dockerfile`，RAG Indexer 使用 `kb_api/rag_indexer/Dockerfile`。两者各自维护 `pyproject.toml`、`uv.lock` 和依赖环境，共用 `kb_api/config/rag.yaml`。KB API 通过 Uvicorn 的 `kb_api.api.main:app` 启动，Indexer 通过 `python -m kb_api.rag_indexer.app.main` 启动。
 `USE_CN_MIRROR` 作为构建参数传给 Docker。Indexer 通过 HTTP 调用 MinerU，不安装 MinerU Python 包。
 
-两个服务均挂载 `kb_api/config`，不挂载整个源码目录。Indexer 的解析和向量推理通过远程服务执行，不挂载本地模型目录。修改代码、依赖或配置后执行 `just kb up` 或 `just indexer up`，重新构建并强制重新创建对应服务容器；修改共用配置后更新两个服务。
+两个服务均挂载 `kb_api/config`，不挂载整个源码目录。Indexer 的解析和向量推理通过远程服务执行，不挂载本地模型目录。修改代码、依赖或配置后执行 `just deploy kb` 或 `just deploy indexer`，重新构建并强制重新创建对应服务容器；修改共用配置后更新两个服务。
 
 内网部署 Indexer 只需 Indexer 镜像、配置及运行环境变量，并能访问所配置的解析与推理服务，不需要 KB API 管理端源码或本地模型目录。源码目录只在构建镜像时使用。
 
@@ -86,18 +82,18 @@ Indexer 容器健康检查仅检查 PID 1 存活；消费情况通过 RabbitMQ �
 
 ## 追踪运行
 
-仅精确匹配 `POST /api/v1/rag/search` 的请求产生 OTel 根 span，并保留搜索流水线的 `rag.search.*` span，链路为 `KB API → OpenTelemetry Collector → Jaeger`。`just infra up` 默认启动[官方 Collector 0.161.0](https://opentelemetry.io/docs/collector/install/docker/) 和 [Jaeger v2.21.0](https://www.jaegertracing.io/docs/2.21/getting-started/)，无需 tracing profile。
+仅精确匹配 `POST /api/v1/rag/search` 的请求产生 OTel 根 span，并保留搜索流水线的 `rag.search.*` span，链路为 `KB API → OpenTelemetry Collector → Jaeger`。`just deploy infra` 默认启动[官方 Collector 0.161.0](https://opentelemetry.io/docs/collector/install/docker/) 和 [Jaeger v2.21.0](https://www.jaegertracing.io/docs/2.21/getting-started/)，无需 tracing profile。
 
 其他请求保留用于响应与日志关联的请求 ID；这些 ID 不代表 OTel trace，不能据此预期在 Jaeger 中查到记录。登录、管理接口、文件索引和 Chat 不再产生新的 OTel trace。
 
 KB API 使用 `http://otel-collector:4318`（`http/protobuf`）发送搜索追踪。Collector 在 `kb-net` 内监听 OTLP/HTTP 4318 和 OTLP/gRPC 4317，通过 `memory_limiter`、`batch` 后以 OTLP/HTTP 转发到 `http://jaeger:4318`；所有 OTLP 端口均不映射到宿主机。接收器、处理器和导出器集中在 `deploy/otel-collector/config.yaml`，后续可扩展处理流程或存储后端。
 
 ```bash
-just infra up
-just kb up
-just indexer up
-just chat up
-just webui up
+just deploy infra
+just deploy kb
+just deploy indexer
+just deploy chat
+just deploy webui
 ```
 
 1. 发起一次 `POST /api/v1/rag/search` 请求，记录响应中的 `traceId` 或响应头 `X-Trace-Id`。
@@ -110,7 +106,7 @@ UI 仅绑定 `127.0.0.1`，用于本地管理，不经 Nginx 暴露。远程查�
 
 按[官方 Badger 配置](https://github.com/jaegertracing/jaeger/blob/v2.21.0/cmd/jaeger/config-badger.yaml)启用本地持久化，数据位于 `jaeger_data/`，保留 72 小时；重建容器不清空数据。已有 Indexer、Chat 等历史追踪继续保留至 72 小时 TTL 到期，收窄追踪范围不会清空历史数据。[Badger 适用于单节点](https://www.jaegertracing.io/docs/2.21/storage/badger/)，不支持横向扩展。Jaeger 以 UID/GID 10001 运行。
 
-`deploy/env.example` 提供 OTel 设置，`deploy/kb.yaml` 仅对 KB API 设置服务名和 OTel 默认值：SDK 默认启用，`parentbased_traceidratio` 对新根追踪默认采样率为 `1.0`，子追踪沿用父级采样决定。可在 `deploy/.env` 设置 `OTEL_TRACES_SAMPLER_ARG=0.1` 降低采样，或 `OTEL_SDK_DISABLED=true` 关闭 SDK；修改后用 `just kb up` 重建/重新创建 KB API 容器使环境生效。
+`deploy/env.example` 提供 OTel 设置，`deploy/kb.yaml` 仅对 KB API 设置服务名和 OTel 默认值：SDK 默认启用，`parentbased_traceidratio` 对新根追踪默认采样率为 `1.0`，子追踪沿用父级采样决定。可在 `deploy/.env` 设置 `OTEL_TRACES_SAMPLER_ARG=0.1` 降低采样，或 `OTEL_SDK_DISABLED=true` 关闭 SDK；修改后用 `just deploy kb` 重建/重新创建 KB API 容器使环境生效。
 
 仅校验配置（不启动部署服务；最后两条使用临时容器运行配置校验，未缓存时需拉取镜像）：
 
@@ -153,7 +149,7 @@ PDF provider 在 `kb_api/config/rag.yaml` 中通过 `enable` 切换：
 
 Indexer 不运行本地 MinerU SDK 解析、不加载模型，也不需要 GPU。独立 MinerU 服务的官方模型下载与部署命令见 `scripts/deploy_mineru_services.txt`，其 Compose 配置为 `deploy/mineru.yaml`；模型目录由该服务使用并继续保留。
 
-修改 provider 代码或配置后执行 `just indexer up`。
+修改 provider 代码或配置后执行 `just deploy indexer`。
 
 ## API
 

@@ -13,7 +13,7 @@ x-app-service: &app-service
     - kb-net
 
 services:
-  rag_indexer:
+  indexer:
     container_name: kb_indexer
     <<: *app-service
     image: kb-indexer:${IMAGE_TAG:-dev}

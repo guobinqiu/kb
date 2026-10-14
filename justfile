@@ -1,89 +1,30 @@
-set dotenv-load := true
+set dotenv-load
 set dotenv-path := "deploy/.env"
 
-infra action:
-	just _infra-{{action}}
+import 'just/network.just'
+import 'just/infra.just'
+import 'just/kb.just'
+import 'just/indexer.just'
+import 'just/chat.just'
+import 'just/webui.just'
+import 'just/nginx.just'
+import 'just/tei.just'
+import 'just/mineru.just'
 
-kb action:
-	just _kb-{{action}}
+deploy service:
+    @just _{{ service }}-deploy
 
-indexer action:
-	just _indexer-{{action}}
+build service:
+    @just _{{ service }}-build
 
-chat action:
-	just _chat-{{action}}
+start service:
+    @just _{{ service }}-start
 
-webui action:
-	just _webui-{{action}}
+stop service:
+    @just _{{ service }}-stop
 
-nginx action:
-	just _nginx-{{action}}
+remove service:
+    @just _{{ service }}-remove
 
-tei action:
-	just _tei-{{action}}
-
-mineru action:
-	just _mineru-{{action}}
-
-_infra-up: _network-up
-	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml up -d
-
-_infra-down:
-	docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml down
-
-_kb-up: _network-up
-	docker compose --env-file deploy/.env -p kb-api -f deploy/kb.yaml up -d --build --force-recreate
-
-_kb-down:
-	docker compose --env-file deploy/.env -p kb-api -f deploy/kb.yaml down
-
-_kb-build:
-	docker compose --env-file deploy/.env -p kb-api -f deploy/kb.yaml build
-
-_indexer-up: _network-up
-	docker compose --env-file deploy/.env -p kb-indexer -f deploy/indexer.yaml up -d --build --force-recreate
-
-_indexer-down:
-	docker compose --env-file deploy/.env -p kb-indexer -f deploy/indexer.yaml down
-
-_indexer-build:
-	docker compose --env-file deploy/.env -p kb-indexer -f deploy/indexer.yaml build
-
-_chat-up: _network-up
-	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml up -d --build --force-recreate
-
-_chat-down:
-	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml down
-
-_chat-build:
-	docker compose --env-file deploy/.env -p kb-chat -f deploy/chat.yaml build
-
-_webui-up: _network-up
-	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml up -d --build --force-recreate
-
-_webui-down:
-	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml down
-
-_webui-build:
-	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml build
-
-_nginx-up: _network-up
-	docker compose --env-file deploy/.env -p kb-nginx -f deploy/nginx.yaml up -d
-
-_nginx-down:
-	docker compose --env-file deploy/.env -p kb-nginx -f deploy/nginx.yaml down
-
-_tei-up: _network-up
-	docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml up -d
-
-_tei-down:
-	docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml down
-
-_mineru-up: _network-up
-	docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml up -d
-
-_mineru-down:
-	docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml down
-
-_network-up:
-	docker network inspect kb-net >/dev/null 2>&1 || docker network create kb-net
+restart service:
+    @just _{{ service }}-restart
