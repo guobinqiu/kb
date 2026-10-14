@@ -101,7 +101,7 @@ def load_vector_config(path: str | Path | None = None) -> VectorConfig:
         "qdrant": "QDRANT_API_KEY",
         "milvus": "MILVUS_TOKEN",
         "qdrant_cloud": "QDRANT_CLOUD_API_KEY",
-        "milvus_cloud": "MILVUS_CLOUD_TOKEN",
+        "milvus_cloud": "MILVUS_CLOUD_API_KEY",
     }
     return VectorConfig(
         provider=provider.removesuffix("_cloud"),

@@ -24,10 +24,11 @@ def test_search_config_reads_fetch_k(tmp_path):
     ("qdrant", "qdrant", "QDRANT_API_KEY", "api_key"),
     ("qdrant_cloud", "qdrant", "QDRANT_CLOUD_API_KEY", "api_key"),
     ("milvus", "milvus", "MILVUS_TOKEN", "token"),
-    ("milvus_cloud", "milvus", "MILVUS_CLOUD_TOKEN", "token"),
+    ("milvus_cloud", "milvus", "MILVUS_CLOUD_API_KEY", "token"),
 ])
 def test_vector_config_selects_backend_and_environment_secret(tmp_path, monkeypatch, backend, provider, secret_env, secret_field):
-    for name in ("QDRANT_API_KEY", "QDRANT_CLOUD_API_KEY", "MILVUS_TOKEN", "MILVUS_CLOUD_TOKEN"):
+    monkeypatch.delenv("MILVUS_CLOUD_TOKEN", raising=False)
+    for name in ("QDRANT_API_KEY", "QDRANT_CLOUD_API_KEY", "MILVUS_TOKEN", "MILVUS_CLOUD_API_KEY"):
         monkeypatch.setenv(name, f"secret-for-{name}")
     config_path = tmp_path / "rag.yaml"
     config_path.write_text(yaml.safe_dump({"vector_db": {

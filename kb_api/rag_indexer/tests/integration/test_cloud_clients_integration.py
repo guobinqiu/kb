@@ -45,7 +45,7 @@ def test_cloud_vector_collection_lifecycle(cloud_services, provider):
             write_timeout=config["write_timeout"],
             init_timeout=config["init_timeout"],
             drop_timeout=config["drop_timeout"],
-            token=os.environ["MILVUS_CLOUD_TOKEN"],
+            token=os.environ["MILVUS_CLOUD_API_KEY"],
         )
     app_id = f"cloud_{uuid.uuid4().hex}"
     file_id = str(uuid.uuid4())

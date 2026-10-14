@@ -107,7 +107,8 @@ def test_load_config_file_reads_service_bound_milvus_config(tmp_path):
 @pytest.mark.parametrize("selected,provider", [("qdrant_cloud", "qdrant"), ("milvus_cloud", "milvus")])
 def test_cloud_vector_selection_keeps_cloud_endpoint(tmp_path, monkeypatch, selected, provider):
 
-    monkeypatch.setenv("MILVUS_CLOUD_TOKEN", "cloud-token")
+    monkeypatch.delenv("MILVUS_CLOUD_TOKEN", raising=False)
+    monkeypatch.setenv("MILVUS_CLOUD_API_KEY", "cloud-token")
     monkeypatch.setenv("QDRANT_CLOUD_API_KEY", "cloud-key")
     raw = _base_config()
     for name in ("qdrant", "milvus", "qdrant_cloud", "milvus_cloud"):

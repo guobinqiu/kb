@@ -51,7 +51,7 @@ def _apply_environment(raw: dict) -> None:
             ("qdrant", "api_key", "QDRANT_API_KEY"),
             ("milvus", "token", "MILVUS_TOKEN"),
             ("qdrant_cloud", "api_key", "QDRANT_CLOUD_API_KEY"),
-            ("milvus_cloud", "token", "MILVUS_CLOUD_TOKEN"),
+            ("milvus_cloud", "token", "MILVUS_CLOUD_API_KEY"),
         ):
             if vector.get("provider") == provider:
                 vector[key] = os.getenv(secret_env)
