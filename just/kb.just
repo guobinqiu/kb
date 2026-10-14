@@ -1,5 +1,5 @@
 _kb-deploy: _network-up
-	docker compose --env-file deploy/.env -p kb_api -f deploy/kb.yaml up -d --build --force-recreate
+	docker compose --env-file deploy/.env -p kb_api -f deploy/kb.yaml up -d --build
 
 _kb-build:
 	docker compose --env-file deploy/.env -p kb_api -f deploy/kb.yaml build

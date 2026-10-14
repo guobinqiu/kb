@@ -1,5 +1,5 @@
 _chat-deploy: _network-up
-	docker compose --env-file deploy/.env -p kb_chat -f deploy/chat.yaml up -d --build --force-recreate
+	docker compose --env-file deploy/.env -p kb_chat -f deploy/chat.yaml up -d --build
 
 _chat-build:
 	docker compose --env-file deploy/.env -p kb_chat -f deploy/chat.yaml build

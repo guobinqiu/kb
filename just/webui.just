@@ -1,5 +1,5 @@
 _webui-deploy: _network-up
-	docker compose --env-file deploy/.env -p kb_webui -f deploy/webui.yaml up -d --build --force-recreate
+	docker compose --env-file deploy/.env -p kb_webui -f deploy/webui.yaml up -d --build
 
 _webui-build:
 	docker compose --env-file deploy/.env -p kb_webui -f deploy/webui.yaml build

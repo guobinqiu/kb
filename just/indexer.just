@@ -1,5 +1,5 @@
 _indexer-deploy: _network-up
-	docker compose --env-file deploy/.env -p kb_indexer -f deploy/indexer.yaml up -d --build --force-recreate
+	docker compose --env-file deploy/.env -p kb_indexer -f deploy/indexer.yaml up -d --build
 
 _indexer-build:
 	docker compose --env-file deploy/.env -p kb_indexer -f deploy/indexer.yaml build
