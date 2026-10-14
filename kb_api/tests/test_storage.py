@@ -16,24 +16,24 @@ def test_presign_put_uses_internal_endpoint_for_region_lookup(monkeypatch):
     def region_response(client, *_args, **_kwargs):
         host = client._base_url._url.netloc
         contacted.append(host)
-        if host != "kb-minio:9000":
+        if host != "kb_minio:9000":
             raise AssertionError(f"region lookup used public endpoint: {host}")
         return SimpleNamespace(data=b"<LocationConstraint>us-east-1</LocationConstraint>")
 
     monkeypatch.setattr(Minio, "_url_open", region_response)
     storage = MinioStorage(
-        "http://kb-minio:9000", "access", "secret", "kb-files", public_url="http://localhost:9000"
+        "http://kb_minio:9000", "access", "secret", "kb-files", public_url="http://localhost:9000"
     )
 
     url = storage.presign_put("uploads/report.txt", expires_seconds=900)
 
     assert urlsplit(url).netloc == "localhost:9000"
     assert urlsplit(url).path == "/kb-files/uploads/report.txt"
-    assert contacted == ["kb-minio:9000"]
+    assert contacted == ["kb_minio:9000"]
 
 
 @pytest.mark.parametrize("url,scheme", [
-    ("http://kb-minio:9000", "http"),
+    ("http://kb_minio:9000", "http"),
     ("https://storage.example:9000", "https"),
 ])
 def test_internal_url_determines_minio_transport(url, scheme):
@@ -42,7 +42,7 @@ def test_internal_url_determines_minio_transport(url, scheme):
 
 
 @pytest.mark.parametrize("url", [
-    "kb-minio:9000", "ftp://kb-minio:9000", "http://kb-minio:9000/path",
+    "kb_minio:9000", "ftp://kb_minio:9000", "http://kb_minio:9000/path",
 ])
 def test_internal_url_requires_http_origin(url):
     with pytest.raises(ValueError, match="KB_MINIO_URL"):
@@ -50,7 +50,7 @@ def test_internal_url_requires_http_origin(url):
 
 
 def test_checksum_hashes_object_content_and_closes_response(monkeypatch):
-    storage = MinioStorage("http://kb-minio:9000", "access", "secret", "kb-files")
+    storage = MinioStorage("http://kb_minio:9000", "access", "secret", "kb-files")
     response = io.BytesIO(b"document content")
     released = []
     response.release_conn = lambda: released.append(True)
@@ -68,6 +68,6 @@ def test_checksum_hashes_object_content_and_closes_response(monkeypatch):
 
 
 def test_storage_rejects_url_outside_its_bucket():
-    storage = MinioStorage("http://kb-minio:9000", "access", "secret", "kb-files")
+    storage = MinioStorage("http://kb_minio:9000", "access", "secret", "kb-files")
     with pytest.raises(ValueError):
         storage.stat("s3://other/uploads/a.txt")

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const expected = {
-  'infra.yaml': ['kb_otel_collector', 'kb_jaeger', 'kb_postgres', 'kb_rabbitmq', 'kb_qdrant', 'kb-minio', 'kb_etcd', 'kb_milvus'],
+  'infra.yaml': ['kb_otel_collector', 'kb_jaeger', 'kb_postgres', 'kb_rabbitmq', 'kb_qdrant', 'kb_minio', 'kb_etcd', 'kb_milvus'],
   'kb.yaml': ['kb_api'],
   'indexer.yaml': ['kb_indexer'],
   'chat.yaml': ['kb_chat'],

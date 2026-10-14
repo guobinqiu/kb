@@ -16,7 +16,7 @@ def test_storage_presign_uses_minio_url(monkeypatch, entrypoint, expires_in):
 
     class FakeMinio:
         def __init__(self, endpoint, *, access_key, secret_key, secure):
-            assert endpoint == "kb-minio:9000"
+            assert endpoint == "kb_minio:9000"
             assert access_key == "dummy-access-key"
             assert secret_key == "dummy-secret-key"
             assert secure is False
@@ -25,12 +25,12 @@ def test_storage_presign_uses_minio_url(monkeypatch, entrypoint, expires_in):
             assert bucket == "rag"
             assert object_name == "uploads/imsdom/docs/a.pdf"
             assert expires == timedelta(seconds=expires_in)
-            return "http://kb-minio:9000/rag/docs/a.pdf?token=abc"
+            return "http://kb_minio:9000/rag/docs/a.pdf?token=abc"
 
     monkeypatch.setattr(storage, "Minio", FakeMinio)
     monkeypatch.setenv("S3_ACCESS_KEY", "dummy-access-key")
     monkeypatch.setenv("S3_SECRET_KEY", "dummy-secret-key")
-    state = SimpleNamespace(config=SimpleNamespace(storage=StorageConfig(url="http://kb-minio:9000")))
+    state = SimpleNamespace(config=SimpleNamespace(storage=StorageConfig(url="http://kb_minio:9000")))
 
     s3_url = "s3://rag/uploads/imsdom/docs/a.pdf"
     if entrypoint == "mq":
@@ -38,7 +38,7 @@ def test_storage_presign_uses_minio_url(monkeypatch, entrypoint, expires_in):
     else:
         result = storage.presign_object(state.config.storage, s3_url, expires_in=expires_in)
 
-    assert result == "http://kb-minio:9000/rag/docs/a.pdf?token=abc"
+    assert result == "http://kb_minio:9000/rag/docs/a.pdf?token=abc"
 
 
 def test_storage_https_url_enables_tls(monkeypatch):

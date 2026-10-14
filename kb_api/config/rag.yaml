@@ -14,7 +14,7 @@ search:
     rrf_k: 60
 
 storage:
-  url: http://kb-minio:9000
+  url: http://kb_minio:9000
   bucket: kb-files
   presign_timeout: 60
 
