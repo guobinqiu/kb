@@ -45,14 +45,14 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 
 | 文件 | Compose 项目 | 服务 |
 | --- | --- | --- |
-| `deploy/infra.yaml` | `kb-infra` | ParadeDB/PostgreSQL、RabbitMQ、MinIO、Collector、Jaeger；可选 Qdrant、Milvus、etcd |
-| `deploy/kb.yaml` | `kb-api` | KB API |
-| `deploy/indexer.yaml` | `kb-indexer` | RAG Indexer |
-| `deploy/chat.yaml` | `kb-chat` | Chat |
-| `deploy/webui.yaml` | `kb-webui` | WebUI |
-| `deploy/nginx.yaml` | `kb-nginx` | WebUI、KB API、Chat 的域名入口 |
-| `deploy/tei.yaml` | `kb-tei` | TEI |
-| `deploy/mineru.yaml` | `kb-mineru` | MinerU |
+| `deploy/infra.yaml` | `kb_infra` | ParadeDB/PostgreSQL、RabbitMQ、MinIO、Collector、Jaeger；可选 Qdrant、Milvus、etcd |
+| `deploy/kb.yaml` | `kb_api` | KB API |
+| `deploy/indexer.yaml` | `kb_indexer` | RAG Indexer |
+| `deploy/chat.yaml` | `kb_chat` | Chat |
+| `deploy/webui.yaml` | `kb_webui` | WebUI |
+| `deploy/nginx.yaml` | `kb_nginx` | WebUI、KB API、Chat 的域名入口 |
+| `deploy/tei.yaml` | `kb_tei` | TEI |
+| `deploy/mineru.yaml` | `kb_mineru` | MinerU |
 
 `kb/indexer/chat/webui up` 使用 `docker compose up -d --build --force-recreate`；`infra/tei/mineru/nginx up` 使用 `up -d`，不构建镜像。WebUI 镜像在构建阶段执行 Vite 构建，运行阶段使用镜像内的 Nginx 托管静态文件并透明代理 KB API 与 Chat；入口 Nginx 按 Host 将 `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` 分别转发到 WebUI、KB API、Chat。浏览器管理台仍通过同源 `/api` 调用后端，认证由后端服务处理。`kb/indexer/chat/webui build` 执行各自的 Compose 镜像构建。
 
@@ -65,8 +65,8 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 各后端的 `bm25` 控制建库时是否创建 BM25 能力及是否参与 sparse/hybrid 检索。PostgreSQL 后端使用 `pg_search`，Qdrant 使用服务端的 `qdrant/bm25`，Milvus 使用内置 BM25 函数。关闭开关后现有集合仍可做 dense 检索；为已有 dense-only 集合开启 BM25 时，需要重新创建集合并重建文件索引。`query_timeout`、`write_timeout`、`init_timeout`、`drop_timeout` 分别限制查询、写入、初始化和删除操作，`retry` 控制可重试数据库错误的重试次数与间隔。
 
 ```bash
-docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile qdrant up -d --force-recreate
-docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml --profile milvus up -d --force-recreate
+docker compose --env-file deploy/.env -p kb_infra -f deploy/infra.yaml --profile qdrant up -d --force-recreate
+docker compose --env-file deploy/.env -p kb_infra -f deploy/infra.yaml --profile milvus up -d --force-recreate
 ```
 
 MinerU Compose 沿用官方方式在本地构建好的 `mineru:4` 镜像，不从官方 registry 拉取该标签；运行前需确保本机已有该镜像。
@@ -111,13 +111,13 @@ UI 仅绑定 `127.0.0.1`，用于本地管理，不经 Nginx 暴露。远程查�
 仅校验配置（不启动部署服务；最后两条使用临时容器运行配置校验，未缓存时需拉取镜像）：
 
 ```bash
-docker compose --env-file deploy/env.example -p kb-infra -f deploy/infra.yaml config -q
-docker compose --env-file deploy/env.example -p kb-api -f deploy/kb.yaml config --no-env-resolution -q
-docker compose --env-file deploy/env.example -p kb-indexer -f deploy/indexer.yaml config --no-env-resolution -q
-docker compose --env-file deploy/env.example -p kb-chat -f deploy/chat.yaml config --no-env-resolution -q
-docker compose --env-file deploy/env.example -p kb-webui -f deploy/webui.yaml config --no-env-resolution -q
-docker compose --env-file deploy/env.example -p kb-tei -f deploy/tei.yaml config --no-env-resolution -q
-docker compose --env-file deploy/env.example -p kb-mineru -f deploy/mineru.yaml config --no-env-resolution -q
+docker compose --env-file deploy/env.example -p kb_infra -f deploy/infra.yaml config -q
+docker compose --env-file deploy/env.example -p kb_api -f deploy/kb.yaml config --no-env-resolution -q
+docker compose --env-file deploy/env.example -p kb_indexer -f deploy/indexer.yaml config --no-env-resolution -q
+docker compose --env-file deploy/env.example -p kb_chat -f deploy/chat.yaml config --no-env-resolution -q
+docker compose --env-file deploy/env.example -p kb_webui -f deploy/webui.yaml config --no-env-resolution -q
+docker compose --env-file deploy/env.example -p kb_tei -f deploy/tei.yaml config --no-env-resolution -q
+docker compose --env-file deploy/env.example -p kb_mineru -f deploy/mineru.yaml config --no-env-resolution -q
 docker run --rm --network none -v "$PWD/deploy/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro" ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.161.0 validate --config /etc/otelcol/config.yaml
 docker run --rm --network none -v "$PWD/deploy/jaeger/config.yaml:/etc/jaeger/config.yaml:ro" jaegertracing/jaeger:2.21.0 validate --config /etc/jaeger/config.yaml
 ```

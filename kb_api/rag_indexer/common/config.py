@@ -60,7 +60,7 @@ class StorageConfig:
 
 @dataclass(frozen=True)
 class CallbackConfig:
-    url: str = "http://kb_api:6100/api/v1/index-results"
+    url: str = "http://api:6100/api/v1/index-results"
     timeout: float = 10
 
 
@@ -88,7 +88,7 @@ def parse_app_config(raw: dict[str, Any]) -> AppConfig:
         raise ValueError("services.vector is required")
     return AppConfig(
         indexer=IndexerConfig(callback=CallbackConfig(
-            url=str(callback.get("url", "http://kb_api:6100/api/v1/index-results")),
+            url=str(callback.get("url", "http://api:6100/api/v1/index-results")),
             timeout=float(callback.get("timeout", 10)),
         )),
         chunking=_parse_chunking_config(raw.get("chunking") or {}),

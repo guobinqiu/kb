@@ -24,8 +24,8 @@ Rerank 容器 kb_tei_rerank 挂载 models/BAAI/bge-reranker-v2-m3，宿主端口
 
 3. 查看状态和日志
 
-docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml ps
-docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml logs --tail 100
+docker compose --env-file deploy/.env -p kb_tei -f deploy/tei.yaml ps
+docker compose --env-file deploy/.env -p kb_tei -f deploy/tei.yaml logs --tail 100
 
 4. 健康检查
 

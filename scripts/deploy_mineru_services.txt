@@ -39,8 +39,8 @@ API 使用 --disable-image-analysis 关闭图片内容分析；表格识别不�
 
 4. 查看状态和日志
 
-docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml ps
-docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml logs --tail 100
+docker compose --env-file deploy/.env -p kb_mineru -f deploy/mineru.yaml ps
+docker compose --env-file deploy/.env -p kb_mineru -f deploy/mineru.yaml logs --tail 100
 
 5. 健康检查
 

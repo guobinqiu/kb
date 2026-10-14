@@ -23,7 +23,7 @@ rate_limit_history: 60/minute
 rate_limit_storage: memory://
 
 rag:
-  base_url: http://kb_api:6100
+  base_url: http://api:6100
   timeout: 10
   max_retries: 2
   top_k: 5

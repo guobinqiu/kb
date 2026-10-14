@@ -1,5 +1,5 @@
 services:
-  kb_nginx:
+  nginx:
     container_name: kb_nginx
     image: nginx:1.27-alpine
     ports:

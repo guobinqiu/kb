@@ -55,6 +55,13 @@ def test_load_config_file_reads_qdrant_config(tmp_path):
     assert config.storage.url == "https://storage.example:9000"
 
 
+def test_default_callback_uses_short_api_service_name(tmp_path):
+    path = tmp_path / "rag.yaml"
+    path.write_text(yaml.safe_dump(_base_config("qdrant")), encoding="utf-8")
+
+    assert load_config_file(path).indexer.callback.url == "http://api:6100/api/v1/index-results"
+
+
 @pytest.mark.parametrize("backend", ["qdrant", "milvus"])
 def test_vector_bm25_switch_is_loaded(tmp_path, backend):
     raw = _base_config(backend)

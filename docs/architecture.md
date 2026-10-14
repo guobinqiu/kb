@@ -29,7 +29,7 @@ flowchart LR
     Search --> VDB
 ```
 
-应用服务为 `webui`、`kb_api`、`indexer` 和 `chat`。WebUI 镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat。Parser、文档 Inference 和 Search 都是 Python 模块，不拥有独立端口、健康检查、镜像或进程。KB API 管理 App、org 树、用户、workspace、权限、文件和任务状态，并在自身进程内运行 Search；索引任务通过 RabbitMQ 交给 RAG Indexer。
+应用服务为 `webui`、`api`、`indexer` 和 `chat`。WebUI 镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat。Parser、文档 Inference 和 Search 都是 Python 模块，不拥有独立端口、健康检查、镜像或进程。KB API 管理 App、org 树、用户、workspace、权限、文件和任务状态，并在自身进程内运行 Search；索引任务通过 RabbitMQ 交给 RAG Indexer。
 
 Indexer 位于 `kb_api/rag_indexer`，与 KB API 各自维护 `pyproject.toml`、`uv.lock`、依赖环境和 Dockerfile，共用 `kb_api/config/rag.yaml`，保留两个启动入口。两个进程通过 MQ 和结果回写 API 通信，部署均挂载同一配置目录。Indexer 只记录请求 ID，不启用 OTel 跟踪；解析和向量推理调用远程服务。
 
@@ -138,13 +138,13 @@ Chat 负责会话编排和模型生成，只调用 KB API，不直接访问 Sear
 
 | Compose 文件 | 项目 | 命令 |
 | --- | --- | --- |
-| `deploy/infra.yaml` | `kb-infra` | `just deploy/remove infra` |
-| `deploy/kb.yaml` | `kb-api` | `just deploy/build/remove kb` |
-| `deploy/indexer.yaml` | `kb-indexer` | `just deploy/build/remove indexer` |
-| `deploy/chat.yaml` | `kb-chat` | `just deploy/build/remove chat` |
-| `deploy/webui.yaml` | `kb-webui` | `just deploy/build/remove webui` |
-| `deploy/tei.yaml` | `kb-tei` | `just deploy/remove tei` |
-| `deploy/mineru.yaml` | `kb-mineru` | `just deploy/remove mineru` |
+| `deploy/infra.yaml` | `kb_infra` | `just deploy/remove infra` |
+| `deploy/kb.yaml` | `kb_api` | `just deploy/build/remove kb` |
+| `deploy/indexer.yaml` | `kb_indexer` | `just deploy/build/remove indexer` |
+| `deploy/chat.yaml` | `kb_chat` | `just deploy/build/remove chat` |
+| `deploy/webui.yaml` | `kb_webui` | `just deploy/build/remove webui` |
+| `deploy/tei.yaml` | `kb_tei` | `just deploy/remove tei` |
+| `deploy/mineru.yaml` | `kb_mineru` | `just deploy/remove mineru` |
 
 命令格式为 `just <动作> <服务>`，例如 `just deploy indexer`；动作包括 `deploy`、`build`（有本地镜像构建的服务）、`start`、`stop`、`remove` 和 `restart`。
 

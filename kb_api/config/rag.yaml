@@ -2,7 +2,7 @@ indexer:
   task_timeout: 900 # 索引任务总时长，单位秒；超时文件标记为处理异常
   callback:
     # 内网 Indexer 部署时改为可访问的 KB API 对外入口地址
-    url: http://kb_api:6100/api/v1/index-results
+    url: http://api:6100/api/v1/index-results
     timeout: 10 # 单位秒
 
 search:

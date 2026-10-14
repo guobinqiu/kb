@@ -13,7 +13,7 @@ x-app-service: &app-service
     - kb-net
 
 services:
-  kb_api:
+  api:
     container_name: kb_api
     <<: *app-service
     image: kb-api:${IMAGE_TAG:-dev}

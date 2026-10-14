@@ -160,7 +160,7 @@ request:
 model:
   timeout: 10
 rag:
-  base_url: http://kb_api:6100
+  base_url: http://api:6100
   timeout: 10
   top_k: 5
   rerank: false
@@ -187,7 +187,7 @@ docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 cd ~/workspace/kb
 sudo install -d -o 10001 -g 10001 jaeger_data jaeger_data/keys jaeger_data/values
 just deploy infra
-docker compose --env-file deploy/.env -p kb-infra -f deploy/infra.yaml ps -a
+docker compose --env-file deploy/.env -p kb_infra -f deploy/infra.yaml ps -a
 ```
 
 默认启动 ParadeDB/PostgreSQL、MinIO、RabbitMQ、Collector 和 Jaeger。
