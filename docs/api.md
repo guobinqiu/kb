@@ -148,7 +148,7 @@ GET /api/v1/apps
 DELETE /api/v1/apps/{app_id}
 ```
 
-存在 org 或 workspace 时删除 App 返回 409。当前 App 创建时必建根组织，而根组织不能通过组织接口停用，因此正常创建的 App 暂不能通过该接口删除。路径中的 `app_id` 是创建 App 时提交的业务标识，不是数据库 UUID。
+存在 org 或 workspace 时删除 App 返回 409。须先删除工作区、用户及组织；平台 owner 可删除没有下级组织、用户或工作区授权的根组织，然后删除 App。删除操作不可恢复，不会级联删除关联数据。路径中的 `app_id` 是创建 App 时提交的业务标识，不是数据库 UUID。
 
 ### 组织树
 
@@ -156,7 +156,7 @@ DELETE /api/v1/apps/{app_id}
 |---|---|---|
 | `GET` | `/api/v1/orgs?app_id={app_id}` | 按业务 `app_id` 返回当前用户可见的 active org 树；平台 owner 可见完整树，其他用户从所属组织向下可见 |
 | `POST` | `/api/v1/orgs` | 使用 `parent_id` 和 `name` 创建子组织 |
-| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 |
+| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或永久删除空组织；有下级组织、用户或工作区授权时返回 409 |
 
 每个 App 只有一棵 org 树，组织不能移动到其他 App。`owner` 是平台角色，不挂组织；`admin` 和 `member` 属于一个 org。用户的登录名和响应字段使用 `name`，组织归属使用 `org_id`。
 
@@ -167,6 +167,8 @@ DELETE /api/v1/apps/{app_id}
 失败文件重试和文件删除也必须从 `/api/v1/workspaces/{workspace_id}/files/...` 进入，以便统一执行 workspace 授权。Indexer 的阶段错误写回该文件记录，由文件状态和 `error` 字段供管理界面展示。
 
 Indexer 完成任务后调用 `POST /api/v1/index-results`，原样回传任务中的 `task_id`、`callback_token`、`operation` 和 `file_id`，并提交 `status`、`error`、`indexed_at` 等结果字段。接口只接受当前文件的当前任务凭证；旧任务和错误令牌返回 401，成功返回 204。
+
+KB API 从索引任务创建时记录 `indexing_started_at`（包含排队时间），按 `indexer.task_timeout` 配置的秒数判断超时，默认 900 秒；启动时及之后每分钟扫描一次。超时仍为 `indexing` 的文件变为 `failed`，错误为 `处理异常`。过期回调不能重新将文件标记为成功；RabbitMQ worker 将这类 401 回调视为终态，不重复执行已超时的索引任务。
 
 ## 搜索
 

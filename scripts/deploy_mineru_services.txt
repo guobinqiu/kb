@@ -33,7 +33,7 @@ just mineru up
 
 deploy/mineru.yaml 使用上面构建的 mineru:4，API 暴露到 18002，
 VLM 仅使用容器内的 30000 端口，显存比例为 0.45。两个容器均需要 NVIDIA GPU。
-API 容器名为 mineru-api-server，VLM 容器名为 mineru-vlm-server。
+API 容器名为 kb_mineru_api_server，VLM 容器名为 kb_mineru_vlm_server。
 API 通过 --vlm-server-url http://mineru-vlm-server:30000 复用已有 VLM Server，不另起 VLM 引擎。
 API 使用 --disable-image-analysis 关闭图片内容分析；表格识别不受影响。
 
@@ -44,7 +44,7 @@ docker compose --env-file deploy/.env -p kb-mineru -f deploy/mineru.yaml logs --
 
 5. 健康检查
 
-docker exec mineru-vlm-server curl -f http://127.0.0.1:30000/health
+docker exec kb_mineru_vlm_server curl -f http://127.0.0.1:30000/health
 
 curl -f http://127.0.0.1:18002/v1/health
 

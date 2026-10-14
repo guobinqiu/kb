@@ -50,9 +50,9 @@ class DAO:
         self.index_tasks[file_id] = (task_id, token_hash)
 
     def apply_file_result(
-        self, file_id, *, task_id, token_hash, status, error, indexed_at, deleted=False,
+        self, file_id, *, task_id, token_hash, expected_status, status, error, indexed_at, deleted=False,
     ):
-        if self.index_tasks.get(file_id) != (task_id, token_hash):
+        if self.index_tasks.get(file_id) != (task_id, token_hash) or self.files[file_id]["status"] != expected_status:
             return False
         self.files[file_id].update({
             "status": status,

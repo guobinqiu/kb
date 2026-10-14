@@ -44,21 +44,20 @@ def test_admin_can_grant_admin_in_subtree_but_not_owner(system):
     assert client.get("/api/v1/auth/me", headers=headers).json()["is_platform_admin"] is False
 
 
-def test_disabled_user_old_token_revoked_and_restored(system):
+def test_deleted_user_old_token_revoked(system):
     org = _org(system)
     client = system["client"]
     member = client.post("/api/v1/users", json={"org_id": org["id"], "name": "member", "password": "password-123"}, headers=system["headers"]).json()
     headers = _login(system, "member", "password-123")
     assert client.delete(f"/api/v1/users/{member['id']}", headers=system["headers"]).status_code == 204
     assert member["id"] not in {item["id"] for item in client.get("/api/v1/users", headers=system["headers"]).json()["users"]}
-    assert member["id"] in {item["id"] for item in client.get("/api/v1/users", params={"include_disabled": True}, headers=system["headers"]).json()["users"]}
-    assert client.post("/api/v1/auth/login", json={"name": "member", "password": "password-123"}).json()["error"] == "Account disabled"
+    assert member["id"] not in {item["id"] for item in client.get("/api/v1/users", params={"include_disabled": True}, headers=system["headers"]).json()["users"]}
+    assert client.post("/api/v1/auth/login", json={"name": "member", "password": "password-123"}).json()["error"] == "Invalid credentials"
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
-    assert client.patch(f"/api/v1/users/{member['id']}", json={"deleted_at": None}, headers=system["headers"]).status_code == 200
-    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    assert client.patch(f"/api/v1/users/{member['id']}", json={"deleted_at": None}, headers=system["headers"]).status_code == 422
 
 
-def test_member_cannot_read_disabled_user_directly(system):
+def test_member_cannot_read_deleted_user_directly(system):
     org = _org(system)
     client = system["client"]
     client.post("/api/v1/users", json={"org_id": org["id"], "name": "viewer", "password": "password-123"}, headers=system["headers"])
@@ -66,7 +65,7 @@ def test_member_cannot_read_disabled_user_directly(system):
     headers = _login(system, "viewer", "password-123")
     assert client.delete(f"/api/v1/users/{target['id']}", headers=system["headers"]).status_code == 204
     assert client.get(f"/api/v1/users/{target['id']}", headers=headers).status_code == 404
-    assert client.get(f"/api/v1/users/{target['id']}", headers=system["headers"]).status_code == 200
+    assert client.get(f"/api/v1/users/{target['id']}", headers=system["headers"]).status_code == 404
 
 
 def test_existing_token_uses_current_role(system):

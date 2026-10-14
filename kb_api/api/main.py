@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -9,7 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from kb_api.api.auth import hash_password
-from kb_api.api.config import Settings, load_api_limits
+from kb_api.api.config import Settings, load_api_limits, load_index_task_timeout
 from kb_api.api.middleware import AuthenticationMiddleware
 from kb_api.api.services.rabbitmq import RabbitMQClient
 from kb_api.api.dao import PostgresDAO
@@ -30,6 +32,18 @@ from kb_api.logging_config import configure_logging, log_request_error
 
 
 logger = logging.getLogger("kb_api")
+
+
+async def run_index_timeout_sweep(dao, timeout_seconds: int, interval_seconds: int = 60, *, now=None) -> None:
+    while True:
+        current = now() if now is not None else datetime.now(timezone.utc)
+        try:
+            count = await asyncio.to_thread(dao.expire_indexing_files, current - timedelta(seconds=timeout_seconds))
+            if count:
+                logger.warning("Indexing files expired: count=%s", count)
+        except Exception:
+            logger.exception("Index timeout sweep failed")
+        await asyncio.sleep(interval_seconds)
 
 
 def _install_openapi(application: FastAPI) -> None:
@@ -171,6 +185,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         nonlocal managed_search_service
+        sweep_task = None
         if provided_search_service is None:
             managed_search_service = load_search_service()
             application.state.search_service = managed_search_service
@@ -186,9 +201,14 @@ def create_app(
                     password_hash=hash_password(config.admin_password),
                     role="owner",
                 )
+            sweep_task = asyncio.create_task(run_index_timeout_sweep(dao, load_index_task_timeout()))
         try:
             yield
         finally:
+            if sweep_task is not None:
+                sweep_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await sweep_task
             queue.close()
             if managed_search_service is not None:
                 managed_search_service.close()

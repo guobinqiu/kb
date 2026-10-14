@@ -14,6 +14,7 @@ class FilesDAO(BaseDAO):
         if result is not None:
             result.pop("index_task_id", None)
             result.pop("index_callback_token_hash", None)
+            result.pop("indexing_started_at", None)
         return result
 
     def create_file(self, **values) -> dict:
@@ -48,11 +49,12 @@ class FilesDAO(BaseDAO):
 
     def apply_file_result(
         self, file_id: str, *, task_id: str, token_hash: str,
-        status: str, error, indexed_at, deleted: bool = False,
+        expected_status: str, status: str, error, indexed_at, deleted: bool = False,
     ) -> bool:
         return self._execute(
-            "UPDATE files SET status = %s, error = %s, indexed_at = %s, deleted_at = %s, updated_at = CURRENT_TIMESTAMP "
-            "WHERE id = %s AND index_task_id = %s AND index_callback_token_hash = %s",
+            "UPDATE files SET status = %s, error = %s, indexed_at = %s, deleted_at = %s, "
+            "index_task_id = NULL, index_callback_token_hash = NULL, indexing_started_at = NULL, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = %s AND index_task_id = %s AND index_callback_token_hash = %s AND status = %s",
             (
                 status,
                 json.dumps(error) if error is not None else None,
@@ -61,11 +63,22 @@ class FilesDAO(BaseDAO):
                 file_id,
                 task_id,
                 token_hash,
+                expected_status,
             ),
         )
 
     def set_file_index_task(self, file_id: str, *, task_id: str, token_hash: str) -> None:
         self._execute(
-            "UPDATE files SET index_task_id = %s, index_callback_token_hash = %s WHERE id = %s",
+            "UPDATE files SET index_task_id = %s, index_callback_token_hash = %s, "
+            "indexing_started_at = CASE WHEN status = 'indexing' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = %s",
             (task_id, token_hash, file_id),
         )
+
+    def expire_indexing_files(self, cutoff) -> int:
+        with self._connect() as connection:
+            return connection.execute(
+                "UPDATE files SET status = 'failed', error = %s, updated_at = CURRENT_TIMESTAMP, "
+                "indexing_started_at = NULL, index_task_id = NULL, index_callback_token_hash = NULL "
+                "WHERE status = 'indexing' AND indexing_started_at <= %s AND deleted_at IS NULL",
+                (json.dumps("处理异常"), cutoff),
+            ).rowcount

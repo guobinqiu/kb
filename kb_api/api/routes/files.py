@@ -224,6 +224,7 @@ def apply_index_result(dao, storage, message: dict, *, task_id: str, token_hash:
         file_id,
         task_id=task_id,
         token_hash=token_hash,
+        expected_status="deleting" if operation == "delete" else "indexing",
         status=result_status,
         error=message.get("error"),
         indexed_at=message.get("indexed_at"),

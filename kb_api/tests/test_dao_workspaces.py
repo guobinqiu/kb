@@ -144,9 +144,9 @@ def test_workspace_role_rechecks_disabled_users_and_org_ancestors(system, person
         dao.add_workspace_org(workspace["id"], org_id=leaf["id"], role="editor")
     assert dao.get_workspace_role(user, workspace["id"]) == "editor"
     if disabled == "user":
-        dao.delete_user(user["id"])
+        dao.update_user(user["id"], deleted_at="2026-10-14T00:00:00+00:00")
     else:
-        assert dao.delete_org(leaf["id"] if disabled == "department" else branch["id"]) is True
+        assert dao.update_org(leaf["id"] if disabled == "department" else branch["id"], deleted_at="2026-10-14T00:00:00+00:00") is not None
     # Keep the original user dict to verify that authorization reads current database state.
     assert dao.get_workspace_role(user, workspace["id"]) is None
     assert dao.has_workspace_access(user, workspace["id"]) is False
@@ -192,11 +192,11 @@ def test_only_effective_personal_admins_count_for_last_admin_guard(system, inval
     other_member = dao.add_workspace_member(workspace["id"], user_id=user["id"], role="admin")
     dao.add_workspace_org(workspace["id"], org_id=branch["id"], role="editor")
     if invalid_admin == "disabled-user":
-        dao.delete_user(user["id"])
+        dao.update_user(user["id"], deleted_at="2026-10-14T00:00:00+00:00")
     elif invalid_admin == "disabled-org":
-        assert dao.delete_org(leaf["id"]) is True
+        assert dao.update_org(leaf["id"], deleted_at="2026-10-14T00:00:00+00:00") is not None
     elif invalid_admin == "disabled-ancestor":
-        assert dao.delete_org(branch["id"]) is True
+        assert dao.update_org(branch["id"], deleted_at="2026-10-14T00:00:00+00:00") is not None
     else:
         _, other_org, _ = _app_tree(dao, "Other", "other")
         dao.update_user(user["id"], org_id=other_org["id"])
@@ -229,7 +229,7 @@ def test_list_orgs_returns_complete_app_tree_without_crossing_apps(system):
     visible = dao.list_orgs(first_branch["id"])
     assert [org["id"] for org in visible] == [first_root["id"], first_branch["id"], sibling["id"], leaf["id"]]
     assert second_root["id"] not in {org["id"] for org in visible}
-    dao.delete_org(first_branch["id"])
+    dao.update_org(first_branch["id"], deleted_at="2026-10-14T00:00:00+00:00")
     assert [org["id"] for org in dao.list_orgs(leaf["id"])] == [first_root["id"], sibling["id"]]
     assert [org["id"] for org in dao.list_orgs(leaf["id"], include_disabled=True)] == [first_root["id"], first_branch["id"], sibling["id"], leaf["id"]]
     assert leaf["id"] not in {org["id"] for org in dao.list_orgs(None)}

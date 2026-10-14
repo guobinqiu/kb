@@ -4,6 +4,8 @@
 
 本指南使用 Docker Compose、本机构建应用镜像。关系数据库使用兼容 PostgreSQL 的 ParadeDB 镜像，并同时作为默认向量后端。MinerU 和 TEI 复用 233 上已经运行的服务；Chat 当前使用 OpenRouter。
 
+当前 `deploy/infra.yaml` 使用 WeKnora Compose 同款 `paradedb/paradedb:v0.22.6-pg17`。已有 PG16 的 `pg_data` 不能直接挂载到 PG17；升级现有 233 安装时，须先确定数据迁移或空库重建方案，再执行下文的 `just infra up`。
+
 ## 1. 检查环境
 
 登录 233：
@@ -98,6 +100,8 @@ nano deploy/.env
 | --- | --- |
 | `USE_CN_MIRROR` | `true` |
 | `IMAGE_TAG` | `dev` |
+| `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` | 分别填写管理台、KB API、Chat 的域名；本地示例为 `web.kb.test`、`api.kb.test`、`chat.kb.test` |
+| `KB_HTTP_PORT` | `80`；233 的 443 已由其他服务使用，本入口不配置 HTTPS |
 | `KB_DATABASE_URL` | `postgresql://rag:rag@postgres:5432/rag` |
 | `KB_ADMIN_NAME` | `admin` |
 | `KB_ADMIN_PASSWORD` | 必填，至少 8 位；设置管理员初始登录密码，不能使用 `admin` 或 `change-me` |
@@ -172,17 +176,11 @@ rag:
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-新项目默认使用容器名 `postgres`、`minio`、`rabbitmq`、`jaeger`、`otel-collector`、`kb_api`、`rag_indexer`、`chat`、`webui`。其中 `postgres` 容器运行 ParadeDB，同时保存关系数据、向量和 BM25 索引。可选 Qdrant 使用 `qdrant`，可选 Milvus 使用 `etcd` 和 `milvus`。同名旧容器需先处理。
+新项目容器名统一使用 `kb_` 前缀，包括 `kb_postgres`、`kb_minio`、`kb_rabbitmq`、`kb_jaeger`、`kb_otel_collector`、`kb_api`、`kb_indexer`、`kb_chat`、`kb_webui`、`kb_nginx`。其中 `kb_postgres` 容器运行 ParadeDB，同时保存关系数据、向量和 BM25 索引。可选 Qdrant 使用 `kb_qdrant`，可选 Milvus 使用 `kb_etcd` 和 `kb_milvus`。Compose 服务名仍是 `postgres`、`minio` 等，供容器内部访问。
 
-本次 233 有一个已停止的旧 `minio` 容器，实际处理命令为：
+旧的未加前缀容器不会与 `kb_minio` 等新容器名冲突。更新已有 233 部署时，先核对旧容器的 Compose 项目和数据挂载，再由对应 Compose 项目重新创建容器；不要删除 `pg_data`、`minio_data` 等数据目录。
 
-```bash
-docker rename minio minio-legacy-stopped
-```
-
-仅在存在该旧容器时执行。此命令保留旧容器和数据，不应对正在使用的 KB MinIO 执行。
-
-基础服务需要端口 `5432`、`5672`、`15672`、`9000`、`9001`，WebUI 使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。选择 Qdrant 时还需要 `6333`、`6334`；选择 Milvus 时还需要 `2379`、`19530`、`9091`。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `5175` 和 `9000`。
+基础服务需要端口 `5432`、`5672`、`15672`、`9000`、`9001`，域名入口使用 `80`，WebUI 原直连入口继续使用 `5175`，Jaeger 在宿主机 `127.0.0.1:16686` 监听。选择 Qdrant 时还需要 `6333`、`6334`；选择 Milvus 时还需要 `2379`、`19530`、`9091`。已有 GPU 服务使用 `8081`、`8082`、`18002`。确保这些端口没有被其他服务占用；远程浏览器至少需要能访问 `80` 和 `9000`。233 的 `443` 已由其他服务使用，不要让本入口绑定该端口。
 
 ## 7. 启动基础服务
 
@@ -210,7 +208,7 @@ just infra up
 先等待 PostgreSQL 就绪：
 
 ```bash
-until docker exec postgres pg_isready -U rag -d rag; do
+until docker exec kb_postgres pg_isready -U rag -d rag; do
   sleep 2
 done
 ```
@@ -218,8 +216,8 @@ done
 然后执行仓库中的 SQL：
 
 ```bash
-docker exec -i postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
-docker exec postgres psql -U rag -d rag -c '\dt'
+docker exec -i kb_postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
+docker exec kb_postgres psql -U rag -d rag -c '\dt'
 ```
 
 应看到 `apps`、`orgs`、`users`、`workspaces`、`workspace_user`、`workspace_org`、`files`。`db.sql` 同时准备 `rag_test` 数据库，正式运行不需要执行测试库建表脚本。
@@ -232,30 +230,35 @@ just kb up
 just indexer up
 just chat up
 just webui up
+just nginx up
 ```
 
-四条命令都自动构建并重新创建对应容器。`just webui up` 构建独立 WebUI 镜像；镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat，认证由后端服务处理。
+前四条命令自动构建并重新创建对应容器，最后一条启动独立的域名入口 Nginx。`just webui up` 构建独立 WebUI 镜像；镜像内部使用 Nginx 托管静态文件并透明代理 KB API 与 Chat，认证由后端服务处理。域名入口通过 `kb-net` 访问这三个服务。
+
+使用真实域名时，先在 DNS 中将 `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` 指向 233；使用示例 `.test` 域名时，域名解析取决于发起请求的机器。233 的 `/etc/hosts` 可以在发布时设置 `19.16.1.233 web.kb.test api.kb.test chat.kb.test`，但这只影响 233 本机；本机浏览器仍使用本机 `/etc/hosts`，不会自动切到 233。Docker 不会自动创建这些记录。
 
 ## 10. 检查运行状态
 
 ```bash
 docker ps --filter network=kb-net --format 'table {{.Names}}\t{{.Status}}'
 curl -f http://127.0.0.1:5175/
+curl -f -H 'Host: web.kb.test' http://127.0.0.1/
+curl -f -H 'Host: api.kb.test' http://127.0.0.1/health
 curl -f http://127.0.0.1:9000/minio/health/live
 docker exec kb_api /app/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:6100/health').read().decode())"
-docker exec rag_indexer /app/.venv/bin/python -c "import os; os.kill(1, 0)"
-docker exec rabbitmq rabbitmqctl list_queues name consumers messages_ready messages_unacknowledged
+docker exec kb_indexer /app/.venv/bin/python -c "import os; os.kill(1, 0)"
+docker exec kb_rabbitmq rabbitmqctl list_queues name consumers messages_ready messages_unacknowledged
 ```
 
-`kb_api`、`rag_indexer`、`postgres`、`rabbitmq` 应为 `healthy`，其余长期服务应为 `Up`。Indexer 通过 `python -m kb_api.rag_indexer.app.main` 启动。队列 `kb.index.tasks` 的 `consumers` 应为 `1`；空闲时两项消息数量均为 `0`。
+`kb_api`、`kb_indexer`、`kb_postgres`、`kb_rabbitmq` 应为 `healthy`，`kb_nginx` 和其余长期服务应为 `Up`。Indexer 通过 `python -m kb_api.rag_indexer.app.main` 启动。队列 `kb.index.tasks` 的 `consumers` 应为 `1`；空闲时两项消息数量均为 `0`。上述 curl 命令中的 Host 值需与 `.env` 中的实际域名一致；KB API 的接口地址为 `http://<KB_API_DOMAIN>/api/v1/...`，Chat 为 `http://<KB_CHAT_DOMAIN>/api/v1/llm/...`。
 
 在浏览器打开：
 
 ```text
-http://19.16.1.233:5175
+http://web.kb.test
 ```
 
-使用 `.env` 的 `KB_ADMIN_NAME` 和 `KB_ADMIN_PASSWORD` 登录。首次启动会创建平台管理员；已有账号不会因修改环境变量自动改密码。
+使用 `.env` 的 `KB_ADMIN_NAME` 和 `KB_ADMIN_PASSWORD` 登录。域名未配置好时仍可通过 `http://19.16.1.233:5175` 访问原入口。首次启动会创建平台管理员；已有账号不会因修改环境变量自动改密码。
 
 验收步骤：
 
@@ -273,8 +276,8 @@ http://19.16.1.233:5175
 
 ```bash
 docker logs --tail 100 kb_api
-docker logs --tail 100 rag_indexer
-docker logs --tail 100 chat
+docker logs --tail 100 kb_indexer
+docker logs --tail 100 kb_chat
 ```
 
 从本机建立 Jaeger 隧道：
@@ -302,6 +305,7 @@ just kb up
 just indexer up
 just chat up
 just webui up
+just nginx up
 ```
 
 前端依赖发生变化时直接执行 `just webui up`，Docker 构建阶段会重新安装依赖并生成静态文件。首次安装的 `.env` 和数据库数据保留，不重复覆盖或删除。基础服务配置修改后执行 `just infra up`。

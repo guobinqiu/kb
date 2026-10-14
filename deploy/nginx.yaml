@@ -1,0 +1,24 @@
+services:
+  kb_nginx:
+    container_name: kb_nginx
+    image: nginx:1.27-alpine
+    ports:
+      - "${KB_HTTP_PORT:-80}:80"
+    environment:
+      KB_WEB_DOMAIN: ${KB_WEB_DOMAIN:-web.kb.test}
+      KB_API_DOMAIN: ${KB_API_DOMAIN:-api.kb.test}
+      KB_CHAT_DOMAIN: ${KB_CHAT_DOMAIN:-chat.kb.test}
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - kb-net
+
+networks:
+  kb-net:
+    external: true

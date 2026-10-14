@@ -61,6 +61,15 @@ class RabbitIndexWorker:
     def _on_message(self, channel, method, _properties, body: bytes) -> None:
         try:
             self._consumer.handle(json.loads(body))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                logger.warning("Index result callback is no longer valid; acknowledging task")
+                channel.basic_ack(delivery_tag=method.delivery_tag)
+                return
+            logger.exception("Index task delivery failed", extra={"event": "index_task_delivery_failed"})
+            channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            time.sleep(1)
+            return
         except Exception:
             logger.exception("Index task delivery failed", extra={"event": "index_task_delivery_failed"})
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)

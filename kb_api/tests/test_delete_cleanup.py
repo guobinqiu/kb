@@ -67,3 +67,76 @@ def test_app_delete_with_workspace_preserves_orgs(system):
         dao.delete_app(app["id"])
     assert dao.get_app(app["id"]) == app
     assert dao.get_org(org["id"]) == org
+
+
+def test_empty_root_org_can_be_deleted_before_app(system):
+    dao = system["dao"]
+    app, org = dao.create_app("Empty", "empty")
+
+    response = system["client"].delete(f"/api/v1/orgs/{org['id']}", headers=system["headers"])
+
+    assert response.status_code == 204
+    assert dao.get_org(org["id"]) is None
+    assert system["client"].delete(f"/api/v1/apps/{app['app_id']}", headers=system["headers"]).status_code == 204
+
+
+def test_root_org_cannot_be_deleted_while_app_has_workspace(system):
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    workspace = dao.create_workspace(app["id"], "Policies")
+
+    response = system["client"].delete(f"/api/v1/orgs/{org['id']}", headers=system["headers"])
+
+    assert response.status_code == 409
+    assert dao.get_org(org["id"]) is not None
+    assert dao.get_workspace(workspace["id"]) is not None
+
+
+def test_org_with_child_or_user_cannot_be_deleted(system):
+    dao = system["dao"]
+    app, root = dao.create_app("Acme", "acme")
+    child = dao.create_org(app["id"], root["id"], "Child")
+    user = dao.create_user(org_id=child["id"], name="employee", password_hash=None)
+
+    root_response = system["client"].delete(f"/api/v1/orgs/{root['id']}", headers=system["headers"])
+    child_response = system["client"].delete(f"/api/v1/orgs/{child['id']}", headers=system["headers"])
+
+    assert root_response.status_code == 409
+    assert child_response.status_code == 409
+    assert dao.get_org(root["id"]) is not None
+    assert dao.get_org(child["id"]) is not None
+    assert dao.get_user(user["id"]) is not None
+
+
+def test_unreferenced_user_is_permanently_deleted(system):
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    user = dao.create_user(org_id=org["id"], name="employee", password_hash=None)
+
+    response = system["client"].delete(f"/api/v1/users/{user['id']}", headers=system["headers"])
+
+    assert response.status_code == 204
+    assert dao.get_user(user["id"]) is None
+    assert dao.create_user(org_id=org["id"], name="employee", password_hash=None)["name"] == "employee"
+
+
+def test_referenced_user_cannot_be_deleted(system):
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    user = dao.create_user(org_id=org["id"], name="employee", password_hash=None)
+    workspace = dao.create_workspace(app["id"], "Policies", creator_id=user["id"])
+
+    response = system["client"].delete(f"/api/v1/users/{user['id']}", headers=system["headers"])
+
+    assert response.status_code == 409
+    assert dao.get_user(user["id"]) is not None
+    assert dao.get_workspace(workspace["id"])["created_by"] == user["id"]
+
+
+def test_restore_via_patch_is_no_longer_available(system):
+    dao = system["dao"]
+    app, org = dao.create_app("Acme", "acme")
+    user = dao.create_user(org_id=org["id"], name="employee", password_hash=None)
+
+    assert system["client"].patch(f"/api/v1/users/{user['id']}", json={"deleted_at": None}, headers=system["headers"]).status_code == 422
+    assert system["client"].patch(f"/api/v1/orgs/{org['id']}", json={"deleted_at": None}, headers=system["headers"]).status_code == 422

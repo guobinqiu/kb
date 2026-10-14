@@ -1,7 +1,7 @@
 from kb_api.api.auth import hash_password
 
 
-def test_disabled_branch_hides_users_without_hiding_workspace_files(system):
+def test_branch_delete_requires_empty_org_and_keeps_unrelated_workspace_files(system):
     client = system["client"]
     created = client.post("/api/v1/apps", json={"app_id": "acme", "name": "Acme"}, headers=system["headers"]).json()
     org = created["org"]
@@ -16,18 +16,18 @@ def test_disabled_branch_hides_users_without_hiding_workspace_files(system):
     token = client.post("/api/v1/auth/login", json={"name": "branch", "password": "password-123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
+    assert client.delete(f"/api/v1/orgs/{branch['id']}", headers=system["headers"]).status_code == 409
+    assert client.delete(f"/api/v1/users/{user['id']}", headers=system["headers"]).status_code == 204
     assert client.delete(f"/api/v1/orgs/{branch['id']}", headers=system["headers"]).status_code == 204
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
-    assert client.post("/api/v1/auth/login", json={"name": "branch", "password": "password-123"}).json()["error"] == "Account disabled"
+    assert client.post("/api/v1/auth/login", json={"name": "branch", "password": "password-123"}).json()["error"] == "Invalid credentials"
     assert user["id"] not in {item["id"] for item in client.get("/api/v1/users", headers=system["headers"]).json()["users"]}
     assert file["id"] in {item["id"] for item in client.get(f"/api/v1/workspaces/{workspace['id']}/files", headers=system["headers"]).json()["files"]}
     assert branch["id"] not in system["dao"].app_org_ids(org["app_id"])
     search_headers = system["headers"] | {"X-App-Id": created["app"]["app_id"]}
     assert client.post("/api/v1/rag/search", json={"query": "hello", "workspace_ids": [workspace["id"]]}, headers=search_headers).status_code == 200
-    disabled = client.get("/api/v1/orgs", params={"include_disabled": True}, headers=system["headers"]).json()["orgs"]
-    assert {org["id"], branch["id"]}.issubset({org["id"] for org in disabled})
-    assert client.patch(f"/api/v1/orgs/{branch['id']}", json={"deleted_at": None}, headers=system["headers"]).status_code == 200
-    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    all_orgs = client.get("/api/v1/orgs", params={"include_disabled": True}, headers=system["headers"]).json()["orgs"]
+    assert {item["id"] for item in all_orgs} == {org["id"]}
 
 
 def test_org_move_rejects_cross_app_and_cycle(system):
@@ -39,7 +39,7 @@ def test_org_move_rejects_cross_app_and_cycle(system):
     assert client.patch(f"/api/v1/orgs/{a['id']}", json={"parent_id": child["id"]}, headers=system["headers"]).status_code == 409
 
 
-def test_member_cannot_disable_org_and_top_level_org_cannot_be_disabled(system):
+def test_member_cannot_delete_org_and_only_owner_can_delete_top_level_org(system):
     client = system["client"]
     org = client.post("/api/v1/apps", json={"app_id": "acme", "name": "Acme"}, headers=system["headers"]).json()["org"]
     child = client.post("/api/v1/orgs", json={"parent_id": org["id"], "name": "Child"}, headers=system["headers"]).json()
@@ -48,5 +48,5 @@ def test_member_cannot_disable_org_and_top_level_org_cannot_be_disabled(system):
     admin_token = client.post("/api/v1/auth/login", json={"name": "admin2", "password": "password-123"}).json()["access_token"]
     member_token = client.post("/api/v1/auth/login", json={"name": "member", "password": "password-123"}).json()["access_token"]
     assert client.delete(f"/api/v1/orgs/{child['id']}", headers={"Authorization": f"Bearer {member_token}"}).status_code == 403
-    assert client.delete(f"/api/v1/orgs/{org['id']}", headers={"Authorization": f"Bearer {admin_token}"}).status_code == 409
+    assert client.delete(f"/api/v1/orgs/{org['id']}", headers={"Authorization": f"Bearer {admin_token}"}).status_code == 403
     assert client.delete(f"/api/v1/orgs/{org['id']}", headers=system["headers"]).status_code == 409

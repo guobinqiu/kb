@@ -139,8 +139,8 @@
     "appIdRule": "App ID must start with a letter and contain 2-40 letters, numbers, or underscores",
     "create": "Create enterprise",
     "created": "{name} created",
-    "deleted": "{name} disabled",
-    "deleteConfirm": "Delete app {name}?",
+    "deleted": "{name} deleted",
+    "deleteConfirm": "Delete enterprise {name}? Delete its workspaces and organizations first. This cannot be undone.",
     "current": "Current enterprise",
     "enter": "Enter",
     "empty": "No enterprises"
@@ -195,7 +195,8 @@
     "name": "Organization name",
     "created": "Organization created",
     "deleted": "{name} deleted",
-    "deleteConfirm": "Disable {name}? Child organizations and users will also lose access.",
+    "deleteConfirm": "Permanently delete organization {name}? Delete its child organizations, users, and workspace grants first.",
+    "deleteBlocked": "Delete child organizations, users, and workspace grants first. For a root organization, delete its workspaces too.",
     "disabled": "{name} disabled",
     "restored": "{name} restored",
     "empty": "No organizations"
@@ -220,8 +221,8 @@
     "name": "Account name",
     "created": "Account created",
     "restored": "Account {name} restored",
-    "deleted": "Account {name} disabled",
-    "deleteConfirm": "Disable account {name}?",
+    "deleted": "Account {name} deleted",
+    "deleteConfirm": "Permanently delete account {name}? Remove related data first.",
     "empty": "No accounts"
   },
   "users": {
@@ -238,8 +239,9 @@
     "disabled": "Disabled",
     "restored": "User {name} restored",
     "created": "User created",
-    "deleted": "User {name} disabled",
-    "deleteConfirm": "Disable user {name}?",
+    "deleted": "User {name} deleted",
+    "deleteConfirm": "Permanently delete user {name}? Remove related data first.",
+    "deleteBlocked": "Remove this user's workspace grants and the workspaces and files they created first.",
     "empty": "No users in this organization"
   },
   "files": {
@@ -263,6 +265,8 @@
     "error": "Error",
     "replace": "Replace file",
     "replaced": "{name} replacement submitted",
+    "retry": "Retry indexing",
+    "retrySubmitted": "{name} submitted for reindexing",
     "deleteConfirm": "Delete {name}?",
     "deleteSubmitted": "{name} deletion submitted",
     "processing": "Status refresh is active",

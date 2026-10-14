@@ -108,7 +108,7 @@ def test_workspace_user_directory_paginates_direct_org_and_enterprise_search(sys
         repo.create_user(org_id=org["id"], name=name, password_hash=None)
     nested = repo.create_user(org_id=child["id"], name="Staff Child", password_hash=None)
     inactive = repo.create_user(org_id=org["id"], name="Staff Disabled", password_hash=None)
-    repo.delete_user(inactive["id"])
+    repo.update_user(inactive["id"], deleted_at="2026-10-14T00:00:00+00:00")
     _, foreign_org = repo.create_app("Foreign", "foreign")
     repo.create_user(org_id=foreign_org["id"], name="Staff Foreign", password_hash=None)
     base = f"/api/v1/workspaces/{workspace['id']}"
@@ -128,7 +128,7 @@ def test_workspace_user_directory_paginates_direct_org_and_enterprise_search(sys
     assert user["id"] not in {u["id"] for u in all_users["users"]}
     assert client.get(f"{base}/users", params={"query": "%"}, headers=headers).json()["total"] == 1
     assert client.get(f"{base}/users", params={"org_id": foreign_org["id"]}, headers=headers).status_code == 422
-    repo.delete_org(child["id"])
+    repo.update_org(child["id"], deleted_at="2026-10-14T00:00:00+00:00")
     assert client.get(f"{base}/users", params={"query": "staff"}, headers=headers).json()["total"] == 3
     assert child["id"] not in {o["id"] for o in client.get(f"{base}/orgs", headers=headers).json()["orgs"]}
     for params in [{"page": 0}, {"page_size": 101}]:

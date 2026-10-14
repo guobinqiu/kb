@@ -1,6 +1,6 @@
 services:
   webui:
-    container_name: webui
+    container_name: kb_webui
     image: kb-webui:${IMAGE_TAG:-dev}
     build:
       context: ..

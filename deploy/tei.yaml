@@ -10,7 +10,7 @@ x-infra-service: &infra-service
 
 services:
   tei_dense:
-    container_name: tei_dense
+    container_name: kb_tei_dense
     <<: *infra-service
     image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
     command: ["--model-id", "/model", "--served-model-name", "BAAI/bge-m3"]
@@ -25,7 +25,7 @@ services:
     ipc: host
 
   tei_rerank:
-    container_name: tei_rerank
+    container_name: kb_tei_rerank
     <<: *infra-service
     image: ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
     command: ["--model-id", "/model", "--served-model-name", "BAAI/bge-reranker-v2-m3"]

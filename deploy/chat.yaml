@@ -14,7 +14,7 @@ x-app-service: &app-service
 
 services:
   chat:
-    container_name: chat
+    container_name: kb_chat
     <<: *app-service
     image: kb-chat:${IMAGE_TAG:-dev}
     build:

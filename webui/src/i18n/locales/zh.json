@@ -139,8 +139,8 @@
     "appIdRule": "应用 ID 须以字母开头，仅含字母、数字或下划线，长度 2-40",
     "create": "新建企业",
     "created": "{name} 已创建",
-    "deleted": "{name} 已停用",
-    "deleteConfirm": "删除应用 {name}？",
+    "deleted": "{name} 已删除",
+    "deleteConfirm": "删除企业 {name}？请先删除其工作区和组织，此操作不可恢复。",
     "current": "当前企业",
     "enter": "进入",
     "empty": "暂无企业"
@@ -195,7 +195,8 @@
     "name": "组织名称",
     "created": "组织已创建",
     "deleted": "{name} 已删除",
-    "deleteConfirm": "停用组织 {name}？其下级组织和用户也将暂停访问。",
+    "deleteConfirm": "永久删除组织 {name}？请先删除其下级组织、用户和工作区授权。",
+    "deleteBlocked": "请先删除下级组织、用户和工作区授权；顶级组织还需先删除工作区。",
     "disabled": "{name} 已停用",
     "restored": "{name} 已恢复",
     "empty": "暂无组织"
@@ -220,8 +221,8 @@
     "name": "账户名",
     "created": "账户已创建",
     "restored": "账户 {name} 已恢复",
-    "deleted": "账户 {name} 已停用",
-    "deleteConfirm": "停用账户 {name}？",
+    "deleted": "账户 {name} 已删除",
+    "deleteConfirm": "永久删除账户 {name}？如有关联数据，请先清空。",
     "empty": "暂无账户"
   },
   "users": {
@@ -238,8 +239,9 @@
     "disabled": "已停用",
     "restored": "用户 {name} 已恢复",
     "created": "用户已创建",
-    "deleted": "用户 {name} 已停用",
-    "deleteConfirm": "停用用户 {name}？",
+    "deleted": "用户 {name} 已删除",
+    "deleteConfirm": "永久删除用户 {name}？如有关联数据，请先清空。",
+    "deleteBlocked": "请先清除该用户的工作区成员授权，以及其创建的工作区和文件。",
     "empty": "该组织暂无用户"
   },
   "files": {
@@ -263,6 +265,8 @@
     "error": "错误",
     "replace": "更新文件",
     "replaced": "{name} 已提交更新",
+    "retry": "重新索引",
+    "retrySubmitted": "{name} 已提交重新索引",
     "deleteConfirm": "删除文件 {name}？",
     "deleteSubmitted": "{name} 已提交删除",
     "processing": "状态自动刷新中",

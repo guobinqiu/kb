@@ -101,8 +101,6 @@ def update_user(user_id: str, body: UserUpdate, request: Request, user=Depends(c
         values["password_hash"] = hash_password(body.password)
     if "role" in body.model_fields_set:
         values["role"] = body.role
-    if "deleted_at" in body.model_fields_set:
-        values["deleted_at"] = None
     return _public(dao.update_user(user_id, **values))
 
 
@@ -118,5 +116,8 @@ def delete_user(user_id: str, request: Request, user=Depends(current_user)):
         require_admin(dao, user, found.get("org_id"))
     if found["role"] == "owner" and user["role"] != "owner":
         raise HTTPException(status_code=403, detail="Only owner can manage owner")
-    dao.delete_user(user_id)
+    try:
+        dao.delete_user(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS files (
     deleted_at TIMESTAMPTZ,
     index_task_id UUID,
     index_callback_token_hash TEXT,
+    indexing_started_at TIMESTAMPTZ,
     CONSTRAINT files_status_check CHECK (
         status IN ('uploaded', 'indexing', 'indexed', 'failed', 'deleting', 'delete_failed')
     )
@@ -147,6 +148,8 @@ CREATE TABLE IF NOT EXISTS files (
 
 ALTER TABLE files ADD COLUMN IF NOT EXISTS index_task_id UUID;
 ALTER TABLE files ADD COLUMN IF NOT EXISTS index_callback_token_hash TEXT;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS indexing_started_at TIMESTAMPTZ;
+UPDATE files SET indexing_started_at = updated_at WHERE status = 'indexing' AND indexing_started_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS orgs_parent_id_idx ON orgs(parent_id);
 CREATE INDEX IF NOT EXISTS orgs_app_id_idx ON orgs(app_id);
@@ -155,3 +158,4 @@ CREATE INDEX IF NOT EXISTS workspaces_app_id_idx ON workspaces(app_id);
 CREATE INDEX IF NOT EXISTS workspace_user_workspace_id_idx ON workspace_user(workspace_id);
 CREATE INDEX IF NOT EXISTS workspace_org_workspace_id_idx ON workspace_org(workspace_id);
 CREATE INDEX IF NOT EXISTS files_workspace_id_idx ON files(workspace_id);
+CREATE INDEX IF NOT EXISTS files_indexing_started_at_idx ON files(indexing_started_at) WHERE status = 'indexing';

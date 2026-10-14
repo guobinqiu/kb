@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import httpx
+
 import kb_api.rag_indexer.rabbitmq as rabbitmq
 from kb_api.rag_indexer.rabbitmq import RabbitIndexWorker
 
@@ -70,3 +72,21 @@ def test_worker_requeues_task_when_result_callback_fails(monkeypatch):
 
     assert channel.acked == []
     assert channel.nacked == [("tag-1", True)]
+
+
+def test_worker_acks_task_when_result_callback_is_stale(monkeypatch):
+    monkeypatch.setattr("kb_api.rag_indexer.rabbitmq.time.sleep", lambda _seconds: None)
+
+    def stale(_value):
+        request = httpx.Request("POST", "http://kb_api/result")
+        response = httpx.Response(401, request=request)
+        raise httpx.HTTPStatusError("stale callback", request=request, response=response)
+
+    worker = RabbitIndexWorker(object(), "amqp://localhost", task_queue="tasks", callback_url="http://kb_api/result")
+    worker._consumer = SimpleNamespace(handle=stale)
+    channel = Channel()
+
+    worker._on_message(channel, SimpleNamespace(delivery_tag="tag-1"), None, b'{"file_id":"file-1"}')
+
+    assert channel.acked == ["tag-1"]
+    assert channel.nacked == []

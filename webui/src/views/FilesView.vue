@@ -48,10 +48,13 @@
         <el-table-column :label="t('files.error')" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">{{ indexErrorMessage(row.error) }}</template>
         </el-table-column>
-        <el-table-column :label="t('common.actions')" width="156" align="right">
+        <el-table-column :label="t('common.actions')" width="196" align="right">
           <template #default="{ row }">
             <el-tooltip :content="t('workspace.viewChunks')">
               <el-button :icon="View" circle size="small" :disabled="!canReadFiles" :aria-label="t('workspace.viewChunks')" @click="viewChunks(row)" />
+            </el-tooltip>
+            <el-tooltip :content="t('files.retry')">
+              <el-button :icon="RefreshRight" circle size="small" :aria-label="t('files.retry')" :loading="retryingId === row.id" :disabled="row.status !== 'failed' || !row.s3_url || !canManageFile(row, 'upload')" @click="retryIndex(row)" />
             </el-tooltip>
             <el-tooltip :content="t('files.replace')">
               <el-button :icon="Upload" circle size="small" :aria-label="t('files.replace')" :loading="replacingId === row.id" :disabled="!canManageFile(row, 'upload') || isProcessing(row.status)" @click="chooseReplacement(row)" />
@@ -71,12 +74,12 @@
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Delete, Loading, Upload, UploadFilled, View } from '@element-plus/icons-vue'
+import { Delete, Loading, RefreshRight, Upload, UploadFilled, View } from '@element-plus/icons-vue'
 import RefreshButton from '../components/RefreshButton.vue'
 import SectionHeader from '../components/SectionHeader.vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
-import { getFiles, removeFile, replaceFile, uploadFile } from '../utils/kbApi'
+import { getFiles, removeFile, replaceFile, retryFile, uploadFile } from '../utils/kbApi'
 import { confirmBox } from '../utils/messageBox'
 import { shortTime } from '../utils/format'
 import { errorMessage, indexErrorMessage, showToast } from '../utils/toast'
@@ -96,6 +99,7 @@ const uploading = ref(false)
 const dragging = ref(false)
 const deletingId = ref(null)
 const replacingId = ref(null)
+const retryingId = ref(null)
 const replaceTarget = ref(null)
 const replaceInput = ref(null)
 const uploadInput = ref(null)
@@ -213,6 +217,23 @@ async function replaceSelectedFile(event) {
     await fetchFiles()
     replacingId.value = null
     event.target.value = ''
+  }
+}
+
+async function retryIndex(file) {
+  if (file.status !== 'failed' || !file.s3_url || !canManageFile(file, 'upload') || retryingId.value) return
+  const selectedWorkspaceId = workspaceId.value
+  retryingId.value = file.id
+  try {
+    await retryFile(selectedWorkspaceId, file)
+    if (workspaceId.value === selectedWorkspaceId) {
+      showToast('success', t('files.retrySubmitted', { name: file.filename }))
+      await fetchFiles()
+    }
+  } catch (err) {
+    showToast('error', errorMessage(err))
+  } finally {
+    retryingId.value = null
   }
 }
 

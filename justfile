@@ -16,6 +16,9 @@ chat action:
 webui action:
 	just _webui-{{action}}
 
+nginx action:
+	just _nginx-{{action}}
+
 tei action:
 	just _tei-{{action}}
 
@@ -63,6 +66,12 @@ _webui-down:
 
 _webui-build:
 	docker compose --env-file deploy/.env -p kb-webui -f deploy/webui.yaml build
+
+_nginx-up: _network-up
+	docker compose --env-file deploy/.env -p kb-nginx -f deploy/nginx.yaml up -d
+
+_nginx-down:
+	docker compose --env-file deploy/.env -p kb-nginx -f deploy/nginx.yaml down
 
 _tei-up: _network-up
 	docker compose --env-file deploy/.env -p kb-tei -f deploy/tei.yaml up -d

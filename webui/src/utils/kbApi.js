@@ -175,6 +175,15 @@ export async function replaceFile(workspaceId, id, file) {
   return uploadDirect(workspaceId, file, id)
 }
 
+export async function retryFile(workspaceId, file) {
+  const response = await axios.post(`${API}/workspaces/${encodeURIComponent(workspaceId)}/files/${encodeURIComponent(file.id)}/index`, {
+    s3_url: file.s3_url,
+    filename: file.filename,
+    content_type: file.mime_type,
+  })
+  return response.data
+}
+
 export async function removeFile(workspaceId, id) {
   await axios.delete(`${API}/workspaces/${encodeURIComponent(workspaceId)}/files/${encodeURIComponent(id)}`)
 }

@@ -12,15 +12,16 @@
 cp deploy/env.example deploy/.env
 # 先编辑 deploy/.env；JWT_SECRET 和 KB_ADMIN_PASSWORD 不能保留占位值
 just infra up
-until docker exec postgres pg_isready -U rag -d rag; do sleep 2; done
-docker exec -i postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
+until docker exec kb_postgres pg_isready -U rag -d rag; do sleep 2; done
+docker exec -i kb_postgres psql -U rag -d postgres -v ON_ERROR_STOP=1 < scripts/db.sql
 just kb up
 just indexer up
 just chat up
 just webui up
+just nginx up
 ```
 
-打开管理台：<http://localhost:5175>。
+将 `web.kb.test`、`api.kb.test`、`chat.kb.test` 解析到部署节点后，打开管理台：<http://web.kb.test>。域名可通过 `deploy/.env` 中的 `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` 修改；没有 DNS 记录时需在实际访问端的 `hosts` 中设置。原 `http://localhost:5175` 入口暂时保留。
 
 各服务使用独立 Compose 文件与项目，共用外部 bridge 网络 `kb-net`。Compose 内部服务使用服务名通信；MinerU、TEI 等模型服务也可以按 `kb_api/config/rag.yaml` 配置为宿主机或远程地址。`deploy/infra.yaml` 使用 ParadeDB 镜像提供兼容 PostgreSQL 的关系数据库和默认向量后端，并启动 RabbitMQ、MinIO、OpenTelemetry Collector 和 Jaeger；Qdrant、Milvus 与 etcd 按 profile 启用，不默认启动。TEI 与 MinerU 按需执行 `just tei up`、`just mineru up`。
 
@@ -37,6 +38,7 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 | `just indexer up/down/build` | 管理 RAG Indexer 或构建其镜像 |
 | `just chat up/down/build` | 管理 Chat 或构建其镜像 |
 | `just webui up/down/build` | 管理 WebUI 服务或构建其镜像 |
+| `just nginx up/down` | 管理域名入口 Nginx |
 | `just tei up/down` | 管理 TEI 模型服务 |
 | `just mineru up/down` | 管理 MinerU 模型服务 |
 | `just --list` | 查看命令入口 |
@@ -52,14 +54,15 @@ KB API 负责登录、应用、组织树、用户、工作区、文件、检索�
 | `deploy/indexer.yaml` | `kb-indexer` | RAG Indexer |
 | `deploy/chat.yaml` | `kb-chat` | Chat |
 | `deploy/webui.yaml` | `kb-webui` | WebUI |
+| `deploy/nginx.yaml` | `kb-nginx` | WebUI、KB API、Chat 的域名入口 |
 | `deploy/tei.yaml` | `kb-tei` | TEI |
 | `deploy/mineru.yaml` | `kb-mineru` | MinerU |
 
-`kb/indexer/chat/webui up` 使用 `docker compose up -d --build --force-recreate`；`infra/tei/mineru up` 使用 `up -d`，不构建镜像。WebUI 镜像在构建阶段执行 Vite 构建，运行阶段使用镜像内的 Nginx 托管静态文件并透明代理 KB API 与 Chat；认证由后端服务处理。`kb/indexer/chat/webui build` 执行各自的 Compose 镜像构建。
+`kb/indexer/chat/webui up` 使用 `docker compose up -d --build --force-recreate`；`infra/tei/mineru/nginx up` 使用 `up -d`，不构建镜像。WebUI 镜像在构建阶段执行 Vite 构建，运行阶段使用镜像内的 Nginx 托管静态文件并透明代理 KB API 与 Chat；入口 Nginx 按 Host 将 `KB_WEB_DOMAIN`、`KB_API_DOMAIN`、`KB_CHAT_DOMAIN` 分别转发到 WebUI、KB API、Chat。浏览器管理台仍通过同源 `/api` 调用后端，认证由后端服务处理。`kb/indexer/chat/webui build` 执行各自的 Compose 镜像构建。
 
 所有 `down` 均执行对应项目的原生 `docker compose down`，停止并移除容器，不删除数据、镜像或共享外部网络 `kb-net`。
 
-容器名与服务名一致。
+容器名统一使用 `kb_` 前缀；Compose 服务名保持不变，供 `kb-net` 内部 DNS 使用。
 
 `vector_db.postgres`、`vector_db.qdrant`、`vector_db.milvus` 及云端后端中必须且只能启用一个。默认启用 PostgreSQL 向量后端，数据写入同一个 ParadeDB 实例。使用 Qdrant 或 Milvus 时启用对应配置，并显式启动 profile：
 
@@ -194,9 +197,9 @@ JWT 与 App API Key 不能在同一请求中同时发送。Indexer 结果回写�
 | `GET/POST` | `/api/v1/apps` | 查询或创建应用；每个 App 维护一棵独立 org 树 | JWT |
 | `GET/PATCH/DELETE` | `/api/v1/apps/{app_id}` | 按业务 `app_id` 查询、修改或删除应用 | JWT |
 | `GET/POST` | `/api/v1/orgs` | 查询当前用户可见的组织树或创建组织 | JWT |
-| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或停用组织 | JWT |
+| `GET/PATCH/DELETE` | `/api/v1/orgs/{org_id}` | 查询、修改或永久删除空组织 | JWT |
 | `GET/POST` | `/api/v1/users` | 查询可见用户或创建用户 | JWT |
-| `GET/PATCH/DELETE` | `/api/v1/users/{user_id}` | 查询、修改或停用用户 | JWT |
+| `GET/PATCH/DELETE` | `/api/v1/users/{user_id}` | 查询、修改或永久删除无关联用户 | JWT |
 | `GET/POST` | `/api/v1/apps/{app_id}/workspaces` | 查询或创建知识库 | JWT |
 | `GET/PATCH/DELETE` | `/api/v1/workspaces/{workspace_id}` | 查询、修改或删除知识库 | JWT |
 | `GET/POST` | `/api/v1/workspaces/{workspace_id}/members` | 查询授权来源，或提交 `type/id/role` 新增个人或组织授权 | JWT |

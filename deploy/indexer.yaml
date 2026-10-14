@@ -14,9 +14,9 @@ x-app-service: &app-service
 
 services:
   rag_indexer:
-    container_name: rag_indexer
+    container_name: kb_indexer
     <<: *app-service
-    image: kb-rag-indexer:${IMAGE_TAG:-dev}
+    image: kb-indexer:${IMAGE_TAG:-dev}
     build:
       context: ..
       dockerfile: kb_api/rag_indexer/Dockerfile

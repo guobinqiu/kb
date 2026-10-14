@@ -14,8 +14,7 @@
       </div>
       <div class="organization-actions">
         <el-button :disabled="!canManage || isOrgInactive(selectedOrg.id)" :icon="Edit" @click="openEdit(selectedOrg)">{{ t('common.edit') }}</el-button>
-        <el-button v-if="selectedOrg.deleted_at" :disabled="!canManage" :icon="RefreshLeft" :loading="deletingId === selectedOrg.id" @click="restoreOrg(selectedOrg)">{{ t('common.restore') }}</el-button>
-        <el-button v-else :icon="Delete" type="danger" plain :disabled="!canManage || !selectedOrg.parent_id || isOrgInactive(selectedOrg.parent_id) || selectedOrg.id === currentUser?.org_id" :loading="deletingId === selectedOrg.id" @click="deleteOrg(selectedOrg)">{{ t('common.disable') }}</el-button>
+        <el-button :icon="Delete" type="danger" plain :disabled="!canManage || (!selectedOrg.parent_id && currentUser?.role !== 'owner') || selectedOrg.id === currentUser?.org_id" :loading="deletingId === selectedOrg.id" @click="deleteOrg(selectedOrg)">{{ t('common.delete') }}</el-button>
       </div>
     </div>
 
@@ -52,7 +51,7 @@ import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { ArrowRight, Delete, Edit, OfficeBuilding, Plus, RefreshLeft } from '@element-plus/icons-vue'
+import { ArrowRight, Delete, Edit, OfficeBuilding, Plus } from '@element-plus/icons-vue'
 import SectionHeader from '../components/SectionHeader.vue'
 import DialogActions from '../components/DialogActions.vue'
 import { useAuthStore } from '../stores/auth'
@@ -137,32 +136,23 @@ async function submitOrg() {
   }
 }
 
-async function restoreOrg(org) {
-  deletingId.value = org.id
-  try {
-    await updateOrg(org.id, { deleted_at: null })
-    showToast('success', t('organizations.restored', { name: org.name }))
-    await Promise.all([fetchOrgs(), refreshWorkspaceOrgs()])
-  } catch (err) {
-    showToast('error', errorMessage(err))
-  } finally {
-    deletingId.value = null
-  }
-}
-
 async function deleteOrg(org) {
   try {
-    await confirmBox(t, t('organizations.deleteConfirm', { name: org.name }), t('common.disable'), { type: 'warning' })
+    await confirmBox(t, t('organizations.deleteConfirm', { name: org.name }), t('common.delete'), { type: 'warning' })
   } catch {
     return
   }
   deletingId.value = org.id
   try {
     await removeOrg(org.id)
-    showToast('success', t('organizations.disabled', { name: org.name }))
+    showToast('success', t('organizations.deleted', { name: org.name }))
     await Promise.all([fetchOrgs(), refreshWorkspaceOrgs()])
+    if (selectedOrgId.value === org.id) {
+      const { org_id, ...query } = route.query
+      await router.replace({ path: route.path, query })
+    }
   } catch (err) {
-    showToast('error', errorMessage(err))
+    showToast('error', err?.response?.status === 409 ? t('organizations.deleteBlocked') : errorMessage(err))
   } finally {
     deletingId.value = null
   }

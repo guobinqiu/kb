@@ -24,8 +24,8 @@
             <el-tooltip :content="t('auth.resetPassword')">
               <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="Key" circle size="small" :aria-label="t('auth.resetPassword')" @click="openResetPassword(row)" />
             </el-tooltip>
-            <el-tooltip :content="row.deleted_at ? t('common.restore') : t('common.disable')">
-              <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="row.deleted_at ? RefreshLeft : Delete" circle size="small" :type="row.deleted_at ? 'primary' : 'danger'" plain :aria-label="row.deleted_at ? t('common.restore') : t('common.disable')" :loading="deletingId === row.id" @click="row.deleted_at ? restoreUser(row) : deleteUser(row)" />
+            <el-tooltip :content="t('common.delete')">
+              <el-button :disabled="!canManage || row.id === currentUser?.id || (row.role === 'owner' && currentUser?.role !== 'owner')" :icon="Delete" circle size="small" type="danger" plain :aria-label="t('common.delete')" :loading="deletingId === row.id" @click="deleteUser(row)" />
             </el-tooltip>
           </template>
         </el-table-column>
@@ -83,7 +83,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Delete, Edit, Key, Lock, Plus, RefreshLeft } from '@element-plus/icons-vue'
+import { Delete, Edit, Key, Lock, Plus } from '@element-plus/icons-vue'
 import RefreshButton from '../components/RefreshButton.vue'
 import SectionHeader from '../components/SectionHeader.vue'
 import DialogActions from '../components/DialogActions.vue'
@@ -201,19 +201,6 @@ function openEdit(user) {
   dialogVisible.value = true
 }
 
-async function restoreUser(user) {
-  deletingId.value = user.id
-  try {
-    await updateUser(user.id, { deleted_at: null })
-    showToast('success', t(`${accountLabels.value}.restored`, { name: user.name }))
-    await fetchUsers()
-  } catch (err) {
-    showToast('error', errorMessage(err))
-  } finally {
-    deletingId.value = null
-  }
-}
-
 async function deleteUser(user) {
   try {
     await confirmBox(t, t(`${accountLabels.value}.deleteConfirm`, { name: user.name }), t('common.delete'), { type: 'warning' })
@@ -226,7 +213,7 @@ async function deleteUser(user) {
     showToast('success', t(`${accountLabels.value}.deleted`, { name: user.name }))
     await fetchUsers()
   } catch (err) {
-    showToast('error', errorMessage(err))
+    showToast('error', err?.response?.status === 409 ? t('users.deleteBlocked') : errorMessage(err))
   } finally {
     deletingId.value = null
   }

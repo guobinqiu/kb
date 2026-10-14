@@ -19,8 +19,8 @@ just tei up
 ghcr.io/huggingface/text-embeddings-inference:cuda-1.9
 
 无需本项目 build 或 push 镜像。
-Embedding 容器 tei_dense 挂载 models/BAAI/bge-m3，宿主端口 8081 映射到容器端口 80。
-Rerank 容器 tei_rerank 挂载 models/BAAI/bge-reranker-v2-m3，宿主端口 8082 映射到容器端口 80。
+Embedding 容器 kb_tei_dense 挂载 models/BAAI/bge-m3，宿主端口 8081 映射到容器端口 80。
+Rerank 容器 kb_tei_rerank 挂载 models/BAAI/bge-reranker-v2-m3，宿主端口 8082 映射到容器端口 80。
 
 3. 查看状态和日志
 

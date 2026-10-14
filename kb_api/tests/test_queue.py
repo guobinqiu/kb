@@ -78,6 +78,17 @@ def test_index_result_api_rejects_invalid_callback_token(system):
     assert response.status_code == 401
 
 
+def test_index_result_api_rejects_wrong_operation_for_current_task(system):
+    record = _upload(system)
+    response = system["client"].post(
+        "/api/v1/index-results",
+        json=_result(system, record, operation="delete", status="deleted"),
+    )
+
+    assert response.status_code == 401
+    assert system["dao"].get_file(record["id"])["status"] == "indexing"
+
+
 def test_old_index_task_cannot_overwrite_newer_file_state(system):
     record = _upload(system)
     old_task = dict(system["queue"].messages[-1][1])

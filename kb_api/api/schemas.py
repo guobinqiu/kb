@@ -92,7 +92,6 @@ class OrgCreate(StrictModel):
 class OrgUpdate(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     parent_id: str | None = None
-    deleted_at: None = None
 
 
 class UserCreate(StrictModel):
@@ -112,7 +111,6 @@ class UserUpdate(StrictModel):
     org_id: str | None = None
     password: str | None = Field(default=None, min_length=8)
     role: Literal["owner", "admin", "member"] | None = None
-    deleted_at: None = None
 
 
 class FileUploadWorkspaceRequest(StrictModel):

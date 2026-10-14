@@ -66,8 +66,6 @@ def update_org(org_id: str, body: OrgUpdate, request: Request, user=Depends(curr
     require_admin(dao, user, org_id)
     if org["parent_id"] is None and body.parent_id:
         raise HTTPException(status_code=409, detail="Top-level org cannot be moved")
-    if "deleted_at" in body.model_fields_set and org["parent_id"] is not None and not dao.is_active_org(org["parent_id"]):
-        raise HTTPException(status_code=409, detail="Parent org is disabled")
     if body.parent_id:
         parent = _visible_org(dao, user, body.parent_id)
         require_admin(dao, user, body.parent_id)
@@ -82,8 +80,6 @@ def update_org(org_id: str, body: OrgUpdate, request: Request, user=Depends(curr
         values["name"] = body.name
     if "parent_id" in body.model_fields_set and body.parent_id is not None:
         values["parent_id"] = body.parent_id
-    if "deleted_at" in body.model_fields_set:
-        values["deleted_at"] = None
     return dao.update_org(org_id, **values)
 
 
@@ -92,10 +88,14 @@ def delete_org(org_id: str, request: Request, user=Depends(current_user)):
     dao = request.app.state.dao
     org = _visible_org(dao, user, org_id)
     require_admin(dao, user, org_id)
-    if org["parent_id"] is None:
-        raise HTTPException(status_code=409, detail="Top-level org cannot be disabled")
+    if org["parent_id"] is None and user["role"] != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can delete top-level org")
     if org_id == user.get("org_id"):
-        raise HTTPException(status_code=409, detail="Current user's org cannot be disabled")
-    if not dao.delete_org(org_id):
+        raise HTTPException(status_code=409, detail="Current user's org cannot be deleted")
+    try:
+        deleted = dao.delete_org(org_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
         raise HTTPException(status_code=404, detail="Org not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

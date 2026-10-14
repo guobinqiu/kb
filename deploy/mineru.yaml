@@ -1,6 +1,6 @@
 services:
   mineru-vlm-server:
-    container_name: mineru-vlm-server
+    container_name: kb_mineru_vlm_server
     # 使用官方 Dockerfile 构建的本地 GPU 镜像，构建步骤见 scripts/deploy_mineru_services.txt。
     image: mineru:4
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
       - kb-net
 
   mineru-api-server:
-    container_name: mineru-api-server
+    container_name: kb_mineru_api_server
     image: mineru:4
     restart: unless-stopped
     environment:

@@ -37,6 +37,16 @@ def load_api_limits(path: str | Path | None = None) -> ApiLimits:
     )
 
 
+def load_index_task_timeout(path: str | Path | None = None) -> int:
+    config_path = Path(path or os.getenv("KB_CONFIG_FILE", Path(__file__).parent.parent / "config/rag.yaml"))
+    with config_path.open("r", encoding="utf-8") as stream:
+        raw = yaml.safe_load(stream) or {}
+    timeout = int((raw.get("indexer") or {}).get("task_timeout", 900))
+    if timeout <= 0:
+        raise ValueError("indexer.task_timeout must be positive")
+    return timeout
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str = "postgresql://rag:rag@postgres:5432/rag"

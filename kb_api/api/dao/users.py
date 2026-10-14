@@ -77,4 +77,10 @@ class UsersDAO(BaseDAO):
         return _public_user(row) if row else None
 
     def delete_user(self, user_id: str) -> bool:
-        return self._execute("UPDATE users SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s", (user_id,))
+        with self._connect() as connection:
+            if connection.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,)).fetchone() is None:
+                return False
+            for table, column in (("workspace_user", "user_id"), ("workspaces", "created_by"), ("files", "created_by")):
+                if connection.execute(f"SELECT 1 FROM {table} WHERE {column} = %s LIMIT 1", (user_id,)).fetchone():
+                    raise ValueError("User has related data")
+            return connection.execute("DELETE FROM users WHERE id = %s", (user_id,)).rowcount > 0

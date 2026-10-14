@@ -119,4 +119,15 @@ class OrgsDAO(BaseDAO):
         )
 
     def delete_org(self, org_id: str) -> bool:
-        return self._execute("UPDATE orgs SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND parent_id IS NOT NULL", (org_id,))
+        with self._connect() as connection:
+            org = connection.execute("SELECT id, app_id, parent_id FROM orgs WHERE id = %s FOR UPDATE", (org_id,)).fetchone()
+            if org is None:
+                return False
+            if org["parent_id"] is None and connection.execute(
+                "SELECT 1 FROM workspaces WHERE app_id = %s LIMIT 1", (org["app_id"],),
+            ).fetchone():
+                raise ValueError("Org's app contains workspaces")
+            for table, column in (("orgs", "parent_id"), ("users", "org_id"), ("workspace_org", "org_id")):
+                if connection.execute(f"SELECT 1 FROM {table} WHERE {column} = %s LIMIT 1", (org_id,)).fetchone():
+                    raise ValueError("Org has related data")
+            return connection.execute("DELETE FROM orgs WHERE id = %s", (org_id,)).rowcount > 0

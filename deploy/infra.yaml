@@ -10,7 +10,7 @@ x-infra-service: &infra-service
 
 services:
   otel-collector:
-    container_name: otel-collector
+    container_name: kb_otel_collector
     <<: *infra-service
     image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.161.0
     command: ["--config", "/etc/otelcol/config.yaml"]
@@ -26,7 +26,7 @@ services:
       - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
 
   jaeger:
-    container_name: jaeger
+    container_name: kb_jaeger
     <<: *infra-service
     image: jaegertracing/jaeger:2.21.0
     user: "10001:10001"
@@ -40,9 +40,9 @@ services:
       - ../jaeger_data:/badger
 
   postgres:
-    container_name: postgres
+    container_name: kb_postgres
     <<: *infra-service
-    image: paradedb/paradedb:0.25.10-pg16
+    image: paradedb/paradedb:v0.22.6-pg17
     command: ["postgres", "-c", "shared_preload_libraries=pg_search"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rag}
@@ -59,7 +59,7 @@ services:
       - ../pg_data:/var/lib/postgresql/data
 
   rabbitmq:
-    container_name: rabbitmq
+    container_name: kb_rabbitmq
     <<: *infra-service
     image: rabbitmq:4-management
     environment:
@@ -78,7 +78,7 @@ services:
       - ../rabbitmq_data:/var/lib/rabbitmq
 
   qdrant:
-    container_name: qdrant
+    container_name: kb_qdrant
     <<: *infra-service
     profiles: ["qdrant"]
     image: qdrant/qdrant:v1.19.0
@@ -89,7 +89,7 @@ services:
       - ../qdrant_data:/qdrant/storage
 
   minio:
-    container_name: minio
+    container_name: kb_minio
     <<: *infra-service
     image: minio/minio:RELEASE.2024-05-28T17-19-04Z
     command: minio server /data --console-address ":9001"
@@ -103,7 +103,7 @@ services:
       - ../minio_data:/data
 
   etcd:
-    container_name: etcd
+    container_name: kb_etcd
     <<: *infra-service
     profiles: ["milvus"]
     image: quay.io/coreos/etcd:v3.5.25
@@ -118,7 +118,7 @@ services:
       - ../milvus_data/standalone/etcd:/etcd
 
   milvus:
-    container_name: milvus
+    container_name: kb_milvus
     <<: *infra-service
     profiles: ["milvus"]
     image: milvusdb/milvus:v3.0.0
