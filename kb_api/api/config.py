@@ -54,7 +54,7 @@ class Settings:
     token_ttl_seconds: int = 86400
     admin_name: str = "admin"
     admin_password: str = ""
-    minio_url: str = "http://kb_minio:9000"
+    minio_url: str = "http://minio:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "kb-files"

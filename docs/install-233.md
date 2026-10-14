@@ -109,7 +109,7 @@ nano deploy/.env
 | `RABBITMQ_USER` | `admin` |
 | `RABBITMQ_PASSWORD` | `admin123` |
 | `RABBITMQ_URL` | `amqp://admin:admin123@rabbitmq:5672/%2F` |
-| `KB_MINIO_URL` | `http://kb_minio:9000` |
+| `KB_MINIO_URL` | `http://minio:9000` |
 | `KB_MINIO_PUBLIC_URL` | `http://19.16.1.233:9000` |
 | `KB_MINIO_BUCKET` | `kb-files` |
 | `S3_ACCESS_KEY`、`KB_MINIO_ACCESS_KEY` | 两项填相同的 MinIO 用户名 |
@@ -143,7 +143,7 @@ nano deploy/.env
 | `vector_db.qdrant.enable` | `false` |
 | `vector_db.qdrant.base_url` | `http://qdrant:6333` |
 | `vector_db.milvus.enable`、`vector_db.qdrant_cloud.enable`、`vector_db.milvus_cloud.enable` | `false` |
-| `storage.url` | `http://kb_minio:9000` |
+| `storage.url` | `http://minio:9000` |
 | `storage.bucket` | `kb-files` |
 
 KB API 和 Indexer 共用这个文件。所有 `vector_db` 后端中必须且只能启用一个。默认启用 PostgreSQL 向量后端，并使用 `database_url: postgresql://rag:rag@postgres:5432/rag`；其 `query_timeout`、`write_timeout`、`init_timeout`、`drop_timeout` 和 `retry` 分别控制数据库操作时限与重试。PDF 使用配置的 `standard`，Office 新旧格式固定使用 Flash，TXT 和 Markdown 使用现有文本解析。
@@ -175,7 +175,7 @@ rag:
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-新项目容器名统一使用 `kb_` 前缀，包括 `kb_postgres`、`kb_minio`、`kb_rabbitmq`、`kb_jaeger`、`kb_otel_collector`、`kb_api`、`kb_indexer`、`kb_chat`、`kb_webui`、`kb_nginx`。其中 `kb_postgres` 容器运行 ParadeDB，同时保存关系数据、向量和 BM25 索引。可选 Qdrant 使用 `kb_qdrant`，可选 Milvus 使用 `kb_etcd` 和 `kb_milvus`。Compose 服务名仍是 `postgres`、`minio` 等；KB 使用 `kb_minio` 容器名访问 MinIO。
+新项目容器名统一使用 `kb_` 前缀，包括 `kb_postgres`、`kb_minio`、`kb_rabbitmq`、`kb_jaeger`、`kb_otel_collector`、`kb_api`、`kb_indexer`、`kb_chat`、`kb_webui`、`kb_nginx`。其中 `kb_postgres` 容器运行 ParadeDB，同时保存关系数据、向量和 BM25 索引。可选 Qdrant 使用 `kb_qdrant`，可选 Milvus 使用 `kb_etcd` 和 `kb_milvus`。Compose 服务名仍是 `postgres`、`minio` 等；KB 使用 `minio` 服务名访问 MinIO，因为 S3 服务不接受带下划线的 HTTP Host。
 
 旧的未加前缀容器不会与 `kb_minio` 等新容器名冲突。更新已有 233 部署时，先核对旧容器的 Compose 项目和数据挂载，再由对应 Compose 项目重新创建容器；不要删除 `pg_data`、`minio_data` 等数据目录。
 

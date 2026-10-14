@@ -2,15 +2,15 @@
 
 **Goal:** Replace split MinIO endpoint/TLS settings with HTTP(S) URLs for KB API and Indexer, then deploy the verified change to 233.
 
-**Architecture:** The API accepts one internal `KB_MINIO_URL` and one browser-facing `KB_MINIO_PUBLIC_URL`; URL parsing supplies the MinIO host and TLS flag. The Indexer reads `storage.url` from the shared YAML. The MinIO container is named `kb_minio` so the internal hostname resolves without a separate network alias; its data mount is unchanged.
+**Architecture:** The API accepts one internal `KB_MINIO_URL` and one browser-facing `KB_MINIO_PUBLIC_URL`; URL parsing supplies the MinIO host and TLS flag. The Indexer reads `storage.url` from the shared YAML. The MinIO container is named `kb_minio`, while clients use the `minio` Compose service name because the S3 server rejects underscores in HTTP Host; its data mount is unchanged.
 
 **Tech Stack:** Python 3.11, FastAPI, MinIO Python SDK, pytest, Docker Compose.
 
 ## Global Constraints
 
-- Local internal URL: `http://kb_minio:9000`.
+- Local internal URL: `http://minio:9000`.
 - Local public URL: `http://localhost:9000`.
-- 233 internal URL: `http://kb_minio:9000`.
+- 233 internal URL: `http://minio:9000`.
 - 233 public URL: `http://19.16.1.233:9000`, reachable by the user's browser.
 - Remove `KB_MINIO_ENDPOINT`, `KB_MINIO_SECURE`, and YAML `storage.endpoint_url`.
 - HTTP/HTTPS is derived from URL schemes, with no separate secure flag.
@@ -82,4 +82,4 @@
 - [ ] Transfer the commit to 233 and fast-forward the clean checkout while preserving ignored data directories.
 - [ ] Replace remote `KB_MINIO_ENDPOINT`/`KB_MINIO_SECURE` with `KB_MINIO_URL` while keeping the public URL at the remote IP.
 - [ ] Recreate MinIO with the new container name, rebuild/recreate API and Indexer, and leave PostgreSQL and its data volume intact.
-- [ ] Confirm container DNS resolves `kb_minio`, HTTPS detection tests pass, API/Indexer health is green, and a presigned upload URL uses the remote public endpoint.
+- [ ] Confirm service DNS resolves `minio`, HTTPS detection tests pass, API/Indexer health is green, and a presigned upload URL uses the remote public endpoint.

@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from kb_api.rag_indexer.core.loader import load_app_config
 import yaml
 from kb_api.rag_indexer.core.loader import load_config_file
@@ -6,6 +7,11 @@ from kb_api.rag_indexer.core import loader
 
 
 pytestmark = pytest.mark.unit
+
+
+def test_project_storage_url_uses_compose_service_name():
+    config_path = Path(__file__).resolve().parents[3] / "config/rag.yaml"
+    assert load_config_file(config_path).storage.url == "http://minio:9000"
 
 
 def test_vector_fixture_loads_index_configuration(vector_test_env):

@@ -34,6 +34,10 @@ def test_settings_read_minio_urls(monkeypatch):
     assert settings.minio_public_url == "https://storage.example:9000"
 
 
+def test_settings_default_minio_url_uses_compose_service_name():
+    assert Settings.minio_url == "http://minio:9000"
+
+
 @pytest.mark.parametrize("name", ["JWT_SECRET", "KB_ADMIN_PASSWORD"])
 def test_settings_require_security_credentials(monkeypatch, name):
     monkeypatch.setenv("JWT_SECRET", "jwt-key")
