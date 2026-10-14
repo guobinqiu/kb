@@ -43,7 +43,6 @@ services:
     container_name: kb_postgres
     <<: *infra-service
     image: paradedb/paradedb:v0.22.6-pg17
-    command: ["postgres", "-c", "shared_preload_libraries=pg_search"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rag}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}
