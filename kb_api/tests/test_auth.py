@@ -24,6 +24,16 @@ def test_settings_read_jwt_secret(monkeypatch):
     assert settings.token_secret == "jwt-key"
 
 
+def test_settings_read_minio_urls(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "jwt-key")
+    monkeypatch.setenv("KB_ADMIN_PASSWORD", "admin-password")
+    monkeypatch.setenv("KB_MINIO_URL", "https://storage.example:9000")
+    monkeypatch.setenv("KB_MINIO_PUBLIC_URL", "https://storage.example:9000")
+    settings = Settings.from_env()
+    assert settings.minio_url == "https://storage.example:9000"
+    assert settings.minio_public_url == "https://storage.example:9000"
+
+
 @pytest.mark.parametrize("name", ["JWT_SECRET", "KB_ADMIN_PASSWORD"])
 def test_settings_require_security_credentials(monkeypatch, name):
     monkeypatch.setenv("JWT_SECRET", "jwt-key")

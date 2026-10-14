@@ -170,11 +170,10 @@ def create_app(
     config = settings or Settings.from_env()
     dao = dao or PostgresDAO(config.database_url)
     storage = storage or MinioStorage(
-        config.minio_endpoint,
+        config.minio_url,
         config.minio_access_key,
         config.minio_secret_key,
         config.minio_bucket,
-        config.minio_secure,
         config.minio_public_url,
     )
     queue = queue or RabbitMQClient(config.rabbitmq_url)

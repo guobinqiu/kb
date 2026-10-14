@@ -53,7 +53,7 @@ class ServiceClientsConfig:
 
 @dataclass(frozen=True)
 class StorageConfig:
-    endpoint_url: str | None = None
+    url: str | None = None
     bucket: str = "rag"
     presign_timeout: int = 60
 
@@ -94,7 +94,7 @@ def parse_app_config(raw: dict[str, Any]) -> AppConfig:
         chunking=_parse_chunking_config(raw.get("chunking") or {}),
         services=services_config,
         storage=StorageConfig(
-            endpoint_url=storage.get("endpoint_url"),
+            url=storage.get("url"),
             bucket=str(storage.get("bucket", "rag")),
             presign_timeout=int(storage.get("presign_timeout", 60)),
         ),

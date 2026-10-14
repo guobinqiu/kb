@@ -54,11 +54,10 @@ class Settings:
     token_ttl_seconds: int = 86400
     admin_name: str = "admin"
     admin_password: str = ""
-    minio_endpoint: str = "minio:9000"
+    minio_url: str = "http://kb-minio:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "kb-files"
-    minio_secure: bool = False
     minio_public_url: str = "http://localhost:9000"
     rabbitmq_url: str = "amqp://admin:admin123@rabbitmq:5672/%2F"
 
@@ -78,11 +77,10 @@ class Settings:
             token_ttl_seconds=int(os.getenv("KB_TOKEN_TTL_SECONDS", str(cls.token_ttl_seconds))),
             admin_name=os.getenv("KB_ADMIN_NAME", cls.admin_name),
             admin_password=os.getenv("KB_ADMIN_PASSWORD", ""),
-            minio_endpoint=os.getenv("KB_MINIO_ENDPOINT", cls.minio_endpoint),
+            minio_url=os.getenv("KB_MINIO_URL", cls.minio_url),
             minio_access_key=os.getenv("KB_MINIO_ACCESS_KEY", cls.minio_access_key),
             minio_secret_key=os.getenv("KB_MINIO_SECRET_KEY", cls.minio_secret_key),
             minio_bucket=os.getenv("KB_MINIO_BUCKET", cls.minio_bucket),
-            minio_secure=os.getenv("KB_MINIO_SECURE", "false").lower() in {"1", "true", "yes"},
             minio_public_url=os.getenv("KB_MINIO_PUBLIC_URL", cls.minio_public_url),
             rabbitmq_url=os.getenv("KB_RABBITMQ_URL", cls.rabbitmq_url),
         )

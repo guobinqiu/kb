@@ -10,20 +10,16 @@ from minio import Minio
 class MinioStorage:
     def __init__(
         self,
-        endpoint: str,
+        url: str,
         access_key: str,
         secret_key: str,
         bucket: str,
-        secure: bool = False,
         public_url: str = "http://localhost:9000",
     ):
         self.bucket = bucket
+        endpoint, secure = _origin(url, "KB_MINIO_URL")
         self.client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
-        public = urlsplit(public_url)
-        if public.scheme not in {"http", "https"} or not public.hostname or public.path not in {"", "/"}:
-            raise ValueError("KB_MINIO_PUBLIC_URL must be an HTTP(S) origin without a path")
-        self.public_endpoint = public.netloc
-        self.public_secure = public.scheme == "https"
+        self.public_endpoint, self.public_secure = _origin(public_url, "KB_MINIO_PUBLIC_URL")
         self.access_key = access_key
         self.secret_key = secret_key
         if self.public_endpoint == endpoint and self.public_secure == secure:
@@ -81,3 +77,12 @@ class MinioStorage:
 
     def close(self) -> None:
         pass
+
+
+def _origin(url: str, setting: str) -> tuple[str, bool]:
+    parsed = urlsplit(url)
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname or
+            parsed.path not in {"", "/"} or parsed.query or parsed.fragment or
+            parsed.username or parsed.password):
+        raise ValueError(f"{setting} must be an HTTP(S) origin without a path")
+    return parsed.netloc, parsed.scheme == "https"

@@ -21,7 +21,7 @@ def _base_config(vector: str = "qdrant") -> dict:
         "milvus_cloud": "https://milvus_cloud.example",
     }
     return {
-        "storage": {"endpoint_url": "https://storage.example:9000", "bucket": "documents", "presign_timeout": 44},
+        "storage": {"url": "https://storage.example:9000", "bucket": "documents", "presign_timeout": 44},
         "vector_db": {vector: {
             "enable": True,
             "base_url": vector_urls[vector],
@@ -46,7 +46,7 @@ def test_load_config_file_reads_qdrant_config(tmp_path):
     assert config.services.vector.init_timeout == 120
     assert config.services.vector.drop_timeout == 180
     assert config.name == "rag"
-    assert config.storage.endpoint_url == "https://storage.example:9000"
+    assert config.storage.url == "https://storage.example:9000"
 
 
 @pytest.mark.parametrize("backend", ["qdrant", "milvus"])

@@ -24,12 +24,18 @@ def presign_object(config: StorageConfig, s3_url: str, expires_in: int = 3600) -
 
 
 def minio_client(config: StorageConfig) -> Minio:
-    if not config.endpoint_url:
+    if not config.url:
         raise UpstreamServiceError(
             service="presign", error="object storage is not configured", retryable=False, status_code=503,
         )
-    parsed = urlparse(config.endpoint_url)
-    endpoint = parsed.netloc or parsed.path
+    parsed = urlparse(config.url)
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname or
+            parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment or
+            parsed.username or parsed.password):
+        raise UpstreamServiceError(
+            service="presign", error="storage.url must be an HTTP(S) origin", retryable=False, status_code=503,
+        )
+    endpoint = parsed.netloc
     return Minio(
         endpoint,
         access_key=os.getenv("S3_ACCESS_KEY", "minioadmin"),

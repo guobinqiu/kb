@@ -219,7 +219,7 @@ JWT 与 App API Key 不能在同一请求中同时发送。Indexer 结果回写�
 
 创建应用需提交 `{"app_id":"imsdom","name":"应用名称"}`，响应包含 `app` 和根组织 `org`。`apps.id` 是数据库内部使用的 UUID 主键；`app_id` 是 2-40 个字符、唯一且不可变的业务标识，App 管理路径、`X-App-Id`、索引任务和检索统一使用它。每个 App 只有一棵以根组织开始的 org 树，组织使用 UUID 外键关联应用。平台 `owner` 不属于任何组织，`org_id` 为 null；`admin` 和 `member` 属于当前 App 的一个组织。用户登录和创建请求使用 `name` 表示登录名。
 
-文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用索引接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，索引接口会复用该 ID。浏览器访问的 MinIO 地址由 `KB_MINIO_PUBLIC_URL` 配置，需能从访问 WebUI 的浏览器连通。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
+文件上传分三步：向 KB API 申请上传地址，浏览器直接 PUT 文件到 MinIO，再调用索引接口登记并创建索引任务。替换时申请地址需要传已有 `file_id`，索引接口会复用该 ID。容器内部使用 `KB_MINIO_URL` 和 `storage.url` 指定的 HTTP(S) 地址；浏览器直传使用 `KB_MINIO_PUBLIC_URL`，需能从访问 WebUI 的浏览器连通。协议由 URL 自动判断；接入云 S3 时，内部与公开 URL 可以相同。文件状态包括 `indexing`、`indexed`、`failed`、`deleting`、`delete_failed`。
 
 KB API 将索引和删除任务发布到 `kb.index.tasks`，RAG Indexer 通过 HTTP 回写接口更新结果。一个 App 可有多个 workspace；`workspace_user` 保存个人角色，`workspace_org` 保存组织角色，组织授权动态覆盖直属用户，个人角色优先。操作和角色映射固定在代码，不建权限表。文件只归属 workspace，不归属 org；同一 App 的工作区共用向量 collection，分片保存 `workspace_id`、`file_id` 和 `chunk_index`。搜索可传多个 `workspace_ids` 和 `file_ids`，KB API 会校验工作区授权。详见[工作区授权概要设计](docs/workspace-authorization.md)。
 
