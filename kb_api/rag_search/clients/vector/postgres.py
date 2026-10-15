@@ -236,7 +236,7 @@ class PostgresVectorClient:
         if not self.bm25:
             raise RuntimeError("BM25 is not configured")
         conditions, filter_params = _filter_conditions(metadata_filter)
-        conditions.insert(0, sql.SQL("content @@@ %s"))
+        conditions.insert(0, sql.SQL("content ||| %s"))
         statement = sql.SQL(
             "SELECT chunk_id, content, metadata, paradedb.score(key_id) AS score FROM {}"
         ).format(sql.Identifier(current_collection()))

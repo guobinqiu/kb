@@ -148,7 +148,8 @@ def test_dense_search_uses_cosine_distance_and_returns_public_item_shape(monkeyp
     }]
 
 
-def test_bm25_search_uses_paradedb_score_and_parameterizes_query(monkeypatch):
+@pytest.mark.parametrize("query_text", ["hotel') OR TRUE --", "已登记车辆退房当天15:01离场，停车费多少？"])
+def test_bm25_search_uses_paradedb_score_and_parameterizes_query(monkeypatch, query_text):
     connection = Connection([{
         "chunk_id": "chunk-2",
         "content": "hotel transfer",
@@ -156,15 +157,13 @@ def test_bm25_search_uses_paradedb_score_and_parameterizes_query(monkeypatch):
         "score": 9.5,
     }])
     vector = _client(monkeypatch, connection)
-    query_text = "hotel') OR TRUE --"
-
     with vector.app_scope("acme"):
         items = vector.search_sparse(query_text, 4, None)
 
     query, params = connection.calls[0]
     rendered = _query_text(query)
     assert "paradedb.score(key_id) AS score" in rendered
-    assert "WHERE content @@@ %s" in rendered
+    assert "WHERE content ||| %s" in rendered
     assert "ORDER BY score DESC" in rendered
     assert query_text not in rendered
     assert params == (query_text, 4)
